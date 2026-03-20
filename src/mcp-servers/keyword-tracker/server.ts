@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -14,14 +15,14 @@ const SERVER_VERSION = "1.0.0";
 
 // ── Site config (add new sites as env vars are added) ─────────────────
 const SITE_DOMAINS: Record<number, string> = {
-  1: "lifecircle.in",
+  1: "https://lifecircle.in",
 };
 
 function getSiteUrl(siteId: number): string {
   const domain = SITE_DOMAINS[siteId];
   if (!domain) {
     throw new Error(
-      `Unknown site_id: ${siteId}. Valid IDs: ${Object.keys(SITE_DOMAINS).join(", ")}`
+      `Unknown site_id: ${siteId}. Valid IDs: ${Object.keys(SITE_DOMAINS).join(", ")}`,
     );
   }
   return domain;
@@ -36,7 +37,9 @@ function buildGscClient(siteId: number) {
   try {
     credentials = JSON.parse(raw);
   } catch {
-    throw new Error(`${envKey} must be valid JSON (service account credentials)`);
+    throw new Error(
+      `${envKey} must be valid JSON (service account credentials)`,
+    );
   }
 
   const auth = new google.auth.GoogleAuth({
@@ -70,7 +73,7 @@ async function getRankings(args: Record<string, unknown>) {
   const endDate = (args.end_date as string | undefined) ?? today();
   const limit = (args.limit as number | undefined) ?? 100;
 
-  console.log("============= GSC Auth ***************");
+  console.log("============= GSC Auth *************** site_id:", siteId);
   const sc = buildGscClient(siteId);
   console.log("============= Site Query ***************");
   const res = await sc.searchanalytics.query({
@@ -84,17 +87,24 @@ async function getRankings(args: Record<string, unknown>) {
   });
 
   console.log("============= Get Rankings ***************");
-  const rankings = ((res.data.rows ?? []) as Array<{ keys?: string[]; position?: number; clicks?: number; impressions?: number; ctr?: number }>)
+  const rankings = (
+    (res.data.rows ?? []) as Array<{
+      keys?: string[];
+      position?: number;
+      clicks?: number;
+      impressions?: number;
+      ctr?: number;
+    }>
+  )
     .map((row) => ({
-    keyword: row.keys?.[0] ?? "",
-    position: Math.round((row.position ?? 0) * 10) / 10,
-    clicks: row.clicks ?? 0,
-    impressions: row.impressions ?? 0,
-    ctr_pct: Math.round((row.ctr ?? 0) * 10000) / 100,
-  }))
+      keyword: row.keys?.[0] ?? "",
+      position: Math.round((row.position ?? 0) * 10) / 10,
+      clicks: row.clicks ?? 0,
+      impressions: row.impressions ?? 0,
+      ctr_pct: Math.round((row.ctr ?? 0) * 10000) / 100,
+    }))
     .sort((a, b) => a.position - b.position);
-    
-  console.log("============= Return Rankings ***************");
+
   return {
     site_id: siteId,
     date_range: { start: startDate, end: endDate },
@@ -246,7 +256,10 @@ async function getRankVelocity(args: Record<string, unknown>) {
   });
 
   // Group daily positions by keyword
-  const keywordData = new Map<string, Array<{ date: string; position: number }>>();
+  const keywordData = new Map<
+    string,
+    Array<{ date: string; position: number }>
+  >();
   for (const row of res.data.rows ?? []) {
     const kw = row.keys?.[0] ?? "";
     const date = row.keys?.[1] ?? "";
@@ -294,7 +307,7 @@ async function getRankVelocity(args: Record<string, unknown>) {
 
 export const server = new Server(
   { name: SERVER_NAME, version: SERVER_VERSION },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {} } },
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -307,9 +320,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: "object",
         properties: {
           site_id: { type: "number", description: "Site ID (1=lifecircle.in)" },
-          start_date: { type: "string", description: "Start date YYYY-MM-DD (default: 7 days ago)" },
-          end_date: { type: "string", description: "End date YYYY-MM-DD (default: today)" },
-          limit: { type: "number", description: "Max keywords to return (default: 100)" },
+          start_date: {
+            type: "string",
+            description: "Start date YYYY-MM-DD (default: 7 days ago)",
+          },
+          end_date: {
+            type: "string",
+            description: "End date YYYY-MM-DD (default: today)",
+          },
+          limit: {
+            type: "number",
+            description: "Max keywords to return (default: 100)",
+          },
         },
         required: ["site_id"],
       },
@@ -321,9 +343,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          site_id: { type: "number", description: "Site ID (1=resume-82552.web.app)" },
-          keyword: { type: "string", description: "Exact keyword to retrieve history for" },
-          days: { type: "number", description: "Number of days back to fetch (default: 90)" },
+          site_id: {
+            type: "number",
+            description: "Site ID (1=resume-82552.web.app)",
+          },
+          keyword: {
+            type: "string",
+            description: "Exact keyword to retrieve history for",
+          },
+          days: {
+            type: "number",
+            description: "Number of days back to fetch (default: 90)",
+          },
         },
         required: ["site_id", "keyword"],
       },
@@ -335,9 +366,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          site_id: { type: "number", description: "Site ID (1=resume-82552.web.app)" },
-          days: { type: "number", description: "Period length in days to compare (default: 7)" },
-          limit: { type: "number", description: "Max keywords to return (default: 20)" },
+          site_id: {
+            type: "number",
+            description: "Site ID (1=resume-82552.web.app)",
+          },
+          days: {
+            type: "number",
+            description: "Period length in days to compare (default: 7)",
+          },
+          limit: {
+            type: "number",
+            description: "Max keywords to return (default: 20)",
+          },
           direction: {
             type: "string",
             enum: ["up", "down", "both"],
@@ -354,10 +394,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          site_id: { type: "number", description: "Site ID (1=resume-82552.web.app)" },
-          keyword: { type: "string", description: "Specific keyword to analyse (omit for top movers by velocity)" },
-          days: { type: "number", description: "Date range in days (default: 30)" },
-          limit: { type: "number", description: "Max keywords to return when no keyword is specified (default: 10)" },
+          site_id: {
+            type: "number",
+            description: "Site ID (1=resume-82552.web.app)",
+          },
+          keyword: {
+            type: "string",
+            description:
+              "Specific keyword to analyse (omit for top movers by velocity)",
+          },
+          days: {
+            type: "number",
+            description: "Date range in days (default: 30)",
+          },
+          limit: {
+            type: "number",
+            description:
+              "Max keywords to return when no keyword is specified (default: 10)",
+          },
         },
         required: ["site_id"],
       },
@@ -372,20 +426,38 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   try {
     switch (name) {
       case "get_rankings":
-        console.log("================================================");
-        return { content: [{ type: "text", text: JSON.stringify(await getRankings(a)) }] };
+        console.log("========== GET RANKINGS ==========");
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(await getRankings(a)) },
+          ],
+        };
       case "get_ranking_history":
-        return { content: [{ type: "text", text: JSON.stringify(await getRankingHistory(a)) }] };
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(await getRankingHistory(a)) },
+          ],
+        };
       case "get_top_movers":
-        return { content: [{ type: "text", text: JSON.stringify(await getTopMovers(a)) }] };
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(await getTopMovers(a)) },
+          ],
+        };
       case "get_rank_velocity":
-        return { content: [{ type: "text", text: JSON.stringify(await getRankVelocity(a)) }] };
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(await getRankVelocity(a)) },
+          ],
+        };
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
     return {
-      content: [{ type: "text", text: JSON.stringify({ error: String(error) }) }],
+      content: [
+        { type: "text", text: JSON.stringify({ error: String(error) }) },
+      ],
       isError: true,
     };
   }
@@ -404,12 +476,18 @@ app.post("/mcp", async (req, res) => {
 
   if (!transport) {
     if (!isInitializeRequest(req.body)) {
-      res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request" }, id: null });
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Bad Request" },
+        id: null,
+      });
       return;
     }
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (sid) => { transports.set(sid, transport!); },
+      onsessioninitialized: (sid) => {
+        transports.set(sid, transport!);
+      },
     });
     transport.onclose = () => {
       if (transport!.sessionId) transports.delete(transport!.sessionId);
@@ -422,19 +500,25 @@ app.post("/mcp", async (req, res) => {
 app.get("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
   const transport = sessionId ? transports.get(sessionId) : undefined;
-  if (!transport) { res.status(400).send("Invalid or missing session ID"); return; }
+  if (!transport) {
+    res.status(400).send("Invalid or missing session ID");
+    return;
+  }
   await transport.handleRequest(req, res);
 });
 
 app.delete("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
   const transport = sessionId ? transports.get(sessionId) : undefined;
-  if (!transport) { res.status(400).send("Invalid or missing session ID"); return; }
+  if (!transport) {
+    res.status(400).send("Invalid or missing session ID");
+    return;
+  }
   await transport.handleRequest(req, res);
 });
 
 app.get("/health", (_req, res) =>
-  res.json({ status: "ok", server: SERVER_NAME })
+  res.json({ status: "ok", server: SERVER_NAME }),
 );
 
 const PORT = process.env.PORT ?? 3000;
