@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 
 SITE_IDS = [1]
 
