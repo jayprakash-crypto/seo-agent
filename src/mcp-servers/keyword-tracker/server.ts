@@ -105,6 +105,10 @@ async function getRankings(args: Record<string, unknown>) {
     }))
     .sort((a, b) => a.position - b.position);
 
+  console.log("======== Keywords Ranking ========");
+  console.log(rankings);
+  console.log("==================================");
+
   return {
     site_id: siteId,
     date_range: { start: startDate, end: endDate },
