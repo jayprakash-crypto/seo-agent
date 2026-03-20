@@ -31,6 +31,8 @@ function getSiteUrl(siteId: number): string {
 function buildGscClient(siteId: number) {
   const envKey = `GSC_OAUTH_SITE_${siteId}`;
   const raw = process.env[envKey];
+  console.log(" Environment variable = ", raw, process.env);
+  
   if (!raw) throw new Error(`Missing env var: ${envKey}`);
 
   let credentials: object;
