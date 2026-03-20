@@ -47,8 +47,6 @@ function buildGscClient(siteId: number) {
     scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
   });
 
-  console.log("GSC Auth : ", auth);
-
   return google.searchconsole({ version: "v1", auth });
 }
 
