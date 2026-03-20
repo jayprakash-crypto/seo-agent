@@ -70,7 +70,9 @@ async function getRankings(args: Record<string, unknown>) {
   const endDate = (args.end_date as string | undefined) ?? today();
   const limit = (args.limit as number | undefined) ?? 100;
 
+  console.log("============= GSC Auth ***************");
   const sc = buildGscClient(siteId);
+  console.log("============= Site Query ***************");
   const res = await sc.searchanalytics.query({
     siteUrl: getSiteUrl(siteId),
     requestBody: {
@@ -81,6 +83,7 @@ async function getRankings(args: Record<string, unknown>) {
     },
   });
 
+  console.log("============= Get Rankings ***************");
   const rankings = ((res.data.rows ?? []) as Array<{ keys?: string[]; position?: number; clicks?: number; impressions?: number; ctr?: number }>)
     .map((row) => ({
     keyword: row.keys?.[0] ?? "",
@@ -90,8 +93,8 @@ async function getRankings(args: Record<string, unknown>) {
     ctr_pct: Math.round((row.ctr ?? 0) * 10000) / 100,
   }))
     .sort((a, b) => a.position - b.position);
-  console.log("============= Get Rankings ***************");
-  
+    
+  console.log("============= Return Rankings ***************");
   return {
     site_id: siteId,
     date_range: { start: startDate, end: endDate },
