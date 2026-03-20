@@ -31,8 +31,6 @@ function getSiteUrl(siteId: number): string {
 function buildGscClient(siteId: number) {
   const envKey = `GSC_OAUTH_SITE_${siteId}`;
   const raw = process.env[envKey];
-  console.log(" Environment variable = ", raw, process.env);
-  
   if (!raw) throw new Error(`Missing env var: ${envKey}`);
 
   let credentials: object;
@@ -48,6 +46,8 @@ function buildGscClient(siteId: number) {
     credentials,
     scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
   });
+
+  console.log("GSC Auth : ", auth);
 
   return google.searchconsole({ version: "v1", auth });
 }
