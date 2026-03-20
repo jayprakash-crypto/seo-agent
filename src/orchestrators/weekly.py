@@ -14,7 +14,7 @@ BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 SITE_IDS = [1]
 
 WEEKLY_MCP = [
-    { "type":"url","url":f"{BASE_URL}/keyword-tracker","name":"keywords" },
+    { "type":"url","url":f"https://seo-agent-keyword-tracker.up.railway.app/mcp","name":"keywords" },
     # { "type":"url","url":f"{BASE_URL}/cms-connector","name":"cms" },
     # { "type":"url","url":f"{BASE_URL}/schema-manager","name":"schema" },
     # { "type":"url","url":f"{BASE_URL}/competitor-intel","name":"competitors" },

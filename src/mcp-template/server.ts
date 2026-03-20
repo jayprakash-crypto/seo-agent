@@ -1,10 +1,12 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  isInitializeRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
+import { randomUUID } from "node:crypto";
 
 const SERVER_NAME = "mcp-template-server"; // e.g. 'keyword-tracker'
 const SERVER_VERSION = "1.0.0";
@@ -59,21 +61,48 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   }
 });
 
-// ── STEP 3: Start SSE server ──────────────────────────────────────────
+// ── STEP 3: Start Streamable HTTP server ─────────────────────────────
 const app = express();
 app.use(express.json());
 
-app.get("/sse", async (req, res) => {
-  const transport = new SSEServerTransport("/messages", res);
-  await server.connect(transport);
+const transports = new Map<string, StreamableHTTPServerTransport>();
+
+app.post("/mcp", async (req, res) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  let transport = sessionId ? transports.get(sessionId) : undefined;
+
+  if (!transport) {
+    if (!isInitializeRequest(req.body)) {
+      res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request" }, id: null });
+      return;
+    }
+    transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sid) => { transports.set(sid, transport!); },
+    });
+    transport.onclose = () => {
+      if (transport!.sessionId) transports.delete(transport!.sessionId);
+    };
+    await server.connect(transport);
+  }
+  await transport.handleRequest(req, res, req.body);
 });
 
-app.post("/messages", async (req, res) => {
-  // Handle incoming messages
-  res.json({ ok: true });
+app.get("/mcp", async (req, res) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  const transport = sessionId ? transports.get(sessionId) : undefined;
+  if (!transport) { res.status(400).send("Invalid or missing session ID"); return; }
+  await transport.handleRequest(req, res);
 });
 
-app.get("/health", (req, res) =>
+app.delete("/mcp", async (req, res) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  const transport = sessionId ? transports.get(sessionId) : undefined;
+  if (!transport) { res.status(400).send("Invalid or missing session ID"); return; }
+  await transport.handleRequest(req, res);
+});
+
+app.get("/health", (_req, res) =>
   res.json({ status: "ok", server: SERVER_NAME }),
 );
 
