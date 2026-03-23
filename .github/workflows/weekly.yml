@@ -2,7 +2,7 @@ name: Weekly SEO Tasks
 
 on:
   schedule:
-    - cron: "40 10 * * 1"   # 07:00 UTC every Monday
+    - cron: "41 15 * * 1"   # 07:00 UTC every Monday
   workflow_dispatch:
 
 jobs:
