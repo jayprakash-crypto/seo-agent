@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(xargs grep:*)",
+      "Bash(node -e \"const d=require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\); const p=JSON.parse\\(d\\); console.log\\(JSON.stringify\\(Object.keys\\(p.exports||{}\\),null,2\\)\\)\")",
+      "Bash(node -e \"const p=require\\(''''d:/seo-agent/node_modules/@modelcontextprotocol/sdk/package.json''''\\); console.log\\(Object.keys\\(p.exports||{}\\).join\\(''''\\\\n''''\\)\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(pip install:*)",
+      "Bash(py --version)",
+      "Bash(py -m pip install anthropic)",
+      "Bash(py -c \"import anthropic; print\\(''anthropic'', anthropic.__version__\\)\")",
+      "Bash(py -m pip install python-dotenv)"
+    ]
+  }
+}
