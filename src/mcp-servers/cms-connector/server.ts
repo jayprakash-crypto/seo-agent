@@ -168,6 +168,8 @@ async function listPages(args: Record<string, unknown>) {
   const limit = (args.limit as number | undefined) ?? 20;
   const offset = (args.offset as number | undefined) ?? 0;
   const wp = buildWpClient(siteId);
+  
+  console.log("========== GSC Auth ==========");
   const sc = buildGscClient(siteId);
 
   const [posts, gscRes] = await Promise.all([
@@ -302,7 +304,10 @@ async function getImpressionsVsCtr(args: Record<string, unknown>) {
   const days = (args.days as number | undefined) ?? 28;
   const minImpressions = (args.min_impressions as number | undefined) ?? 100;
   const maxCtrPct = (args.max_ctr_pct as number | undefined) ?? 3;
+  
+  console.log("========== GSC Auth ==========");
   const sc = buildGscClient(siteId);
+  console.log("============= Site Query ***************");
   const res = await sc.searchanalytics.query({
     siteUrl: getSiteUrl(siteId),
     requestBody: {
@@ -313,6 +318,7 @@ async function getImpressionsVsCtr(args: Record<string, unknown>) {
     },
   });
 
+  console.log("============= Get Impressions vs CTR ***************");
   const opportunities = (res.data.rows ?? [])
     .map((row) => ({
       url: row.keys?.[0] ?? "",
