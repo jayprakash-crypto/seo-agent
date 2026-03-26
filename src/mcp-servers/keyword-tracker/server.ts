@@ -440,6 +440,7 @@ function createServer() {
             ],
           };
         case "get_ranking_history":
+          console.log("========== GET RANKING HISTORY ==========");
           return {
             content: [
               {
@@ -449,12 +450,14 @@ function createServer() {
             ],
           };
         case "get_top_movers":
+          console.log("========== GET TOP MOVERS ==========");
           return {
             content: [
               { type: "text", text: JSON.stringify(await getTopMovers(a)) },
             ],
           };
         case "get_rank_velocity":
+          console.log("========== GET RANK VELOCITY ==========");
           return {
             content: [
               { type: "text", text: JSON.stringify(await getRankVelocity(a)) },

@@ -17,7 +17,7 @@
 
 ## Current Phase
 Update this line as you move through phases:
-Phase 1 — Building keyword-tracker MCP server
+Phase 2 — Building cms-connector MCP server
 
 ## MCP Template
 All new servers copy from src/mcp-template/server.ts
