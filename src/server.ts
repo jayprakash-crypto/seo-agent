@@ -1,6 +1,7 @@
 import express from "express";
 
 import keywordTracker from "./mcp-servers/keyword-tracker/server.js";
+import cmsConnector from "./mcp-servers/cms-connector/server.js";
 
 const app = express();
 
@@ -9,6 +10,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/keyword-tracker", keywordTracker);
+app.use("/cms-connector", cmsConnector);
 
 // Catch-all error handler — prevents unhandled errors from returning empty 502s
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

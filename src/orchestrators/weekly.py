@@ -1,10 +1,9 @@
-"""Weekly orchestrator — asks Claude for a keyword report using the Anthropic Python SDK."""
+"""Weekly orchestrator — asks Claude for a keyword + CMS audit using the Anthropic Python SDK."""
 
 import os
 import time
 import json
 import urllib.request
-import urllib.error
 from pathlib import Path
 
 import anthropic
@@ -12,8 +11,8 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 BASE_URL = "https://seo-agent-production-e243.up.railway.app"
+DRY_RUN  = os.getenv("DRY_RUN", "true").lower() == "true"
 
 SITE_IDS = [1]
 
@@ -49,20 +48,20 @@ def wait_for_server(timeout: int = 90) -> None:
     raise RuntimeError(f"MCP server did not become ready within {timeout}s")
 
 WEEKLY_MCP = [
-    { "type":"url","url":f"https://seo-agent-production-e243.up.railway.app/keyword-tracker/mcp","name":"keywords" },
-    # { "type":"url","url":f"https://seo-agent-production-e243.up.railway.app/cms-connector/mcp","name":"cms" },
-    # { "type":"url","url":f"https://seo-agent-production-e243.up.railway.app/schema-manager/mcp","name":"schema" },
-    # { "type":"url","url":f"https://seo-agent-production-e243.up.railway.app/competitor-intel/mcp","name":"competitors" },
-    # { "type":"url","url":f"https://seo-agent-production-e243.up.railway.app/gbp-manager/mcp","name":"gbp" },
-    # { "type":"url","url":f"https://seo-agent-production-e243.up.railway.app/serp-features/mcp","name":"serp" },
-    # { "type":"url","url":f"https://seo-agent-production-e243.up.railway.app/backlink-monitor/mcp","name":"backlinks" },
-    # { "type":"url","url":f"https://seo-agent-production-e243.up.railway.app/reporting/mcp","name":"reporting" },
+    { "type":"url","url":f"{BASE_URL}/keyword-tracker/mcp","name":"keyword-tracker" },
+    { "type":"url","url":f"{BASE_URL}/cms-connector/mcp","name":"cms-connector" },
+    # { "type":"url","url":f"{BASE_URL}/schema-manager/mcp","name":"schema" },
+    # { "type":"url","url":f"{BASE_URL}/competitor-intel/mcp","name":"competitors" },
+    # { "type":"url","url":f"{BASE_URL}/gbp-manager/mcp","name":"gbp" },
+    # { "type":"url","url":f"{BASE_URL}/serp-features/mcp","name":"serp" },
+    # { "type":"url","url":f"{BASE_URL}/backlink-monitor/mcp","name":"backlinks" },
+    # { "type":"url","url":f"{BASE_URL}/reporting/mcp","name":"reporting" },
 ]
 
 # One mcp_toolset entry per active MCP server (must match "name" fields above)
 WEEKLY_TOOLS = [
-    { "type": "mcp_toolset", "mcp_server_name": "keywords" },
-    # { "type": "mcp_toolset", "mcp_server_name": "cms" },
+    { "type": "mcp_toolset", "mcp_server_name": "keyword-tracker" },
+    { "type": "mcp_toolset", "mcp_server_name": "cms-connector" },
     # { "type": "mcp_toolset", "mcp_server_name": "schema" },
     # { "type": "mcp_toolset", "mcp_server_name": "competitors" },
     # { "type": "mcp_toolset", "mcp_server_name": "gbp" },
@@ -71,41 +70,58 @@ WEEKLY_TOOLS = [
     # { "type": "mcp_toolset", "mcp_server_name": "reporting" },
 ]
 
-WEEKLY_PROMPT = '''
-You are an autonomous SEO agent. Run the full weekly audit:
-1. RANKINGS: Check all tracked keywords. Flag drops >5 positions. Note rank velocity.
-2. CONTENT: Audit 10 lowest-scoring pages. Rewrite meta for the worst 3.
-3. SCHEMA: Find pages missing FAQPage or LocalBusiness schema. Generate markup.
-4. COMPETITORS: Pull keyword gaps per city. Flag new competitor content.
-5. GBP: Check local pack positions per city. Draft next week's GBP posts.
-6. SERP FEATURES: Check featured snippet and PAA ownership per city.
-7. BACKLINKS: New and lost links this week. Flag any toxic links.
-8. REPORT: Write a Slack digest with top 3 action items. Log all to Sheets.
-Be specific: use actual URLs, keyword positions, city names, and competitor domains.
-'''
+_DRY_RUN_NOTE = """
+
+IMPORTANT — DRY RUN MODE: You may read data freely, but you must NOT call \
+update_page_meta or any other write tool. Only analyse and suggest.""" if DRY_RUN else ""
+
+WEEKLY_PROMPT = f"""
+You are an SEO analyst. Run the full weekly audit for the site:
+
+1. RANKINGS: Use get_rankings and get_top_movers to check all tracked keywords.
+   Flag any keyword that dropped >5 positions. Note overall rank velocity.
+
+2. CMS AUDIT: Use get_impressions_vs_ctr (min_impressions=200, max_ctr_pct=3) to find
+   the 5 pages with the highest impressions but lowest CTR.
+   For each page call get_page to read the current title and meta description.
+   Suggest a rewritten title and meta description for each page.
+   Do NOT call update_page_meta.
+
+3. REPORT: Print a concise digest with:
+   - Top 3 keyword wins / losses this week
+   - 5 pages with their current and suggested meta (table format)
+   - Top 3 action items for next week
+
+Be specific: use actual URLs, keyword positions, and CTR percentages.{_DRY_RUN_NOTE}
+"""
+
 
 def run_weekly() -> None:
     wait_for_server()
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])  # reads ANTHROPIC_API_KEY from env
 
     for site_id in SITE_IDS:
-        print(f"\n── Site {site_id} ──────────────────────────────")
+        print(f"\n-- Site {site_id} -- DRY_RUN={DRY_RUN} ------------------------------")
 
         message = client.beta.messages.create(
-            model=MODEL,
+            model="claude-sonnet-4-5",
             max_tokens=8192,
             betas=["mcp-client-2025-11-20"],
             mcp_servers=WEEKLY_MCP,
             tools=WEEKLY_TOOLS,
-            messages=[
-                {
-                    "role": "user",
-                    "content": WEEKLY_PROMPT,
-                }
-            ],
+            messages=[{ "role": "user", "content": WEEKLY_PROMPT }],
         )
 
-        print(message.content[0].text)
+        print("WEEKLY KEYWORD REPORT")
+        print("=" * 60)
+
+        for block in message.content:
+            if hasattr(block, "text"):
+                print(block.text)
+            elif hasattr(block, "type") and block.type == "tool_use":
+                print(f"\n[tool_call] {block.name}({json.dumps(block.input, indent=2)})")
+            elif hasattr(block, "type") and block.type == "tool_result":
+                print(f"\n[tool_result] {block.content}")
 
 
 if __name__ == "__main__":

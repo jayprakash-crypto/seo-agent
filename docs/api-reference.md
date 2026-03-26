@@ -180,6 +180,170 @@ time window using linear regression.
 
 ---
 
+### cms-connector
+
+Reads and updates WordPress pages/posts via the WP REST API, merged with GSC metrics.
+Credentials: `CMS_API_URL_SITE_{site_id}` (WP REST base URL, e.g. `https://lifecircle.in/wp-json/wp/v2`), `CMS_API_KEY_SITE_{site_id}` (`username:application_password`), `GSC_OAUTH_SITE_{site_id}` (service account JSON).
+
+---
+
+#### `get_page`
+
+Fetch a WordPress page/post by URL. Returns title, meta description, body HTML, JSON-LD schema blocks, and last modified date.
+
+**Parameters**
+
+| Name      | Type     | Required | Description              |
+|-----------|----------|----------|--------------------------|
+| `site_id` | `number` | yes      | Site ID (e.g. `1`)       |
+| `url`     | `string` | yes      | Full URL of the page     |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "id": 42,
+  "url": "https://lifecircle.in/counselling-services",
+  "title": "Counselling Services",
+  "meta_description": "Professional counselling in India.",
+  "body": "<p>Body HTML...</p>",
+  "schema": [{ "@type": "LocalBusiness", "name": "LifeCircle" }],
+  "last_modified": "2026-03-01T10:00:00",
+  "status": "publish"
+}
+```
+
+> `meta_description` prefers Yoast `yoast_head_json.description`; falls back to `excerpt`.
+> `schema` is extracted from all `<script type="application/ld+json">` blocks in the page body.
+
+---
+
+#### `list_pages`
+
+List published posts with their GSC metrics (impressions, clicks, CTR, position). Supports pagination.
+
+**Parameters**
+
+| Name      | Type     | Required | Description                        |
+|-----------|----------|----------|------------------------------------|
+| `site_id` | `number` | yes      | Site ID                            |
+| `limit`   | `number` | no       | Pages per page (default: 20)       |
+| `offset`  | `number` | no       | Pagination offset (default: 0)     |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "total": 2,
+  "offset": 0,
+  "pages": [
+    {
+      "id": 1,
+      "title": "Counselling Services",
+      "url": "https://lifecircle.in/counselling-services",
+      "last_modified": "2026-03-01T10:00:00",
+      "gsc": { "clicks": 45, "impressions": 800, "ctr_pct": 5.6, "position": 3.2 }
+    }
+  ]
+}
+```
+
+> `gsc` is `null` for pages not found in GSC data.
+
+---
+
+#### `get_page_metrics`
+
+Get GSC metrics (impressions, clicks, CTR, avg position) for a specific page URL over the last 28 days.
+
+**Parameters**
+
+| Name      | Type     | Required | Description          |
+|-----------|----------|----------|----------------------|
+| `site_id` | `number` | yes      | Site ID              |
+| `url`     | `string` | yes      | Full URL of the page |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "url": "https://lifecircle.in/counselling-services",
+  "clicks": 36,
+  "impressions": 1200,
+  "ctr_pct": 3.0,
+  "avg_position": 4.5
+}
+```
+
+> `avg_position` is `null` when GSC has no data for the page.
+
+---
+
+#### `update_page_meta`
+
+Update the SEO title and/or meta description of a WordPress page/post via the REST API.
+
+**Hard rule: this tool will never set `post_status` to `publish`. Passing `status=publish` throws a `FORBIDDEN` error immediately, before any API call is made.**
+
+**Parameters**
+
+| Name          | Type     | Required | Description                          |
+|---------------|----------|----------|--------------------------------------|
+| `site_id`     | `number` | yes      | Site ID                              |
+| `url`         | `string` | yes      | Full URL of the page to update       |
+| `title`       | `string` | no       | New SEO title                        |
+| `description` | `string` | no       | New meta description                 |
+
+At least one of `title` or `description` is required.
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "id": 42,
+  "url": "https://lifecircle.in/counselling-services",
+  "title_updated": true,
+  "description_updated": true,
+  "status": "draft"
+}
+```
+
+---
+
+#### `get_impressions_vs_ctr`
+
+Find pages with high impressions but low CTR — content improvement opportunities. Returns pages sorted by impressions descending.
+
+**Parameters**
+
+| Name              | Type     | Required | Description                                   |
+|-------------------|----------|----------|-----------------------------------------------|
+| `site_id`         | `number` | yes      | Site ID                                       |
+| `days`            | `number` | no       | Date range in days (default: 28)              |
+| `min_impressions` | `number` | no       | Minimum impressions to include (default: 100) |
+| `max_ctr_pct`     | `number` | no       | Maximum CTR % to include (default: 3.0)       |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "days": 28,
+  "filters": { "min_impressions": 100, "max_ctr_pct": 3.0 },
+  "total": 2,
+  "opportunities": [
+    { "url": "https://lifecircle.in/therapy", "impressions": 2000, "clicks": 30, "ctr_pct": 1.5, "avg_position": 3.2 },
+    { "url": "https://lifecircle.in/counselling", "impressions": 500, "clicks": 5, "ctr_pct": 1.0, "avg_position": 5.1 }
+  ]
+}
+```
+
+---
+
 ### rank-tracker
 ### backlink-analyzer
 ### content-auditor
