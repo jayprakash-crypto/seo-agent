@@ -1,0 +1,18 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "keyword-tracker"
+source = "src/mcp-servers/keyword-tracker"
+
+[services.variables]
+PORT = "3000"
+NODE_ENV = "production"
