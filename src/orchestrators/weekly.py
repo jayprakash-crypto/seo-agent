@@ -10,7 +10,7 @@ load_dotenv()
 # Set to True to skip all write operations (dry run mode)
 DRY_RUN = os.environ.get("DRY_RUN", "false").lower() in ("1", "true", "yes")
 
-KEYWORD_TRACKER_URL = "https://seo-agent-test-new.up.railway.app/sse"
+KEYWORD_TRACKER_URL = "https://keyword-tracker-seo-agent.up.railway.app/mcp"
 
 def run_weekly_tasks(site_id: int) -> None:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -31,7 +31,7 @@ weekly keyword performance report for site_id={site_id}.
 
 Please:
 1. Call get_rankings with site_id={site_id} and these keywords:
-   ["seo tools", "keyword tracker", "rank tracking", "search console"]
+   ["lifecircle", "elderly healthcare", "home care", "senior care"]
 2. Call get_top_movers with site_id={site_id}, threshold=3, direction="both"
 3. Call get_rank_velocity for the top-performing keyword with window_days=14
 

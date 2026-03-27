@@ -28,13 +28,19 @@ jest.unstable_mockModule('@modelcontextprotocol/sdk/server/index.js', () => ({
   })),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/sse.js', () => ({
-  SSEServerTransport: jest.fn(),
+jest.unstable_mockModule('@modelcontextprotocol/sdk/server/streamableHttp.js', () => ({
+  StreamableHTTPServerTransport: jest.fn().mockImplementation(() => ({
+    handleRequest: jest.fn(),
+    onclose: null,
+    sessionId: 'test-session',
+    close: jest.fn(),
+  })),
 }));
 
 jest.unstable_mockModule('@modelcontextprotocol/sdk/types.js', () => ({
   ListToolsRequestSchema: 'ListToolsRequestSchema',
   CallToolRequestSchema: 'CallToolRequestSchema',
+  isInitializeRequest: jest.fn().mockReturnValue(true),
 }));
 
 jest.unstable_mockModule('express', () => {
@@ -42,6 +48,7 @@ jest.unstable_mockModule('express', () => {
     use: jest.fn(),
     get: jest.fn(),
     post: jest.fn(),
+    delete: jest.fn(),
     listen: jest.fn(),
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
