@@ -21,6 +21,10 @@ type SlackResponse = {
   error?: string;
 };
 
+const sites: Record<string, string> = {
+  "1": "https://lifecircle.in",
+};
+
 export async function callSlackApi(
   endpoint: string,
   token: string,
@@ -109,16 +113,17 @@ export function createWeeklyDigest(
     impressions: number;
     ctr: number;
   }>,
-  topMovers: {
-    movers?: Array<{ keyword: string; change: number; direction: string }>;
-  },
-  velocity: {
-    keyword?: string;
-    velocity?: number | null;
-    trend?: string;
-    interpretation?: string;
-  },
   summary: string,
+  cmsOpportunities?: Array<{
+    url: string;
+    impressions: number;
+    current_ctr: number;
+    current_title: string;
+    current_description: string;
+    suggested_title: string;
+    suggested_description: string;
+    reasoning?: string;
+  }>,
 ) {
   const today = new Date().toISOString().split("T")[0];
 
@@ -132,28 +137,37 @@ export function createWeeklyDigest(
     : "No ranking data available.";
   console.log("========== Rankings Processed **********");
 
-  const movers = topMovers.movers ?? [];
-  const moverLines = movers.length
-    ? movers
+  // Build CMS meta suggestions section
+  const opportunities = cmsOpportunities ?? [];
+  const cmsLines = opportunities.length
+    ? opportunities
         .map(
-          (m) =>
-            `• ${m.direction === "up" ? "⬆️" : "⬇️"} *${m.keyword}*: ${Math.abs(m.change)} spots`,
+          (o) => {
+            console.log("============= Processing CMS Opportunity ***************\n", o);
+            const page = o.url;
+            const ctr = (o.current_ctr * 100).toFixed(1);
+            return (
+              `• *${page}* (${o.impressions.toLocaleString()} impr, ${ctr}% CTR)\n` +
+              `    *Current:*\n` +
+              `        _Title:_ ${o.current_title}\n` +
+              `        _Desc:_ ${o.current_description}\n\n`+
+              `    *Suggestion:*\n` +
+              `        _Title:_ ${o.suggested_title}\n` +
+              `        _Desc:_ ${o.suggested_description}\n\n` +
+              `    _Reasoning:_ ${o.reasoning ?? "N/A"}`
+            );
+          },
         )
-        .join("\n")
-    : "No significant movers this week.";
-  console.log("========== Movers Processed **********");
-
-  const velocityText = velocity.keyword
-    ? `*${velocity.keyword}*: ${velocity.interpretation ?? "No data"} (trend: ${velocity.trend ?? "unknown"})`
-    : "No velocity data available.";
-  console.log("========== Velocity Processed **********");
+        .join("\n\n")
+    : "No low-CTR opportunities identified this week.";
+  console.log("========== CMS Opportunities Processed **********");
 
   const blocks = [
     {
       type: "header",
       text: {
         type: "plain_text",
-        text: `📊 Weekly SEO Report — Site ${siteId}`,
+        text: `📊 Weekly SEO Report — Site ${sites[String(siteId)]}`,
         emoji: true,
       },
     },
@@ -166,14 +180,15 @@ export function createWeeklyDigest(
       type: "section",
       text: { type: "mrkdwn", text: `*🔑 Keyword Rankings*\n${rankLines}` },
     },
+    { type: "divider" },
     {
       type: "section",
-      text: { type: "mrkdwn", text: `*📈 Top Movers*\n${moverLines}` },
+      text: {
+        type: "mrkdwn",
+        text: `*✏️ Meta Suggestions (Low-CTR Pages)*\n${cmsLines}`,
+      },
     },
-    {
-      type: "section",
-      text: { type: "mrkdwn", text: `*⚡ Rank Velocity*\n${velocityText}` },
-    },
+    { type: "divider" },
     {
       type: "section",
       text: {
@@ -269,7 +284,7 @@ function createMcpServer(): Server {
       {
         name: "create_weekly_digest",
         description:
-          "Format keyword performance data into a structured Slack Block Kit digest. Returns blocks and fallback_text ready to pass to post_slack_message.",
+          "Format keyword performance and CMS meta suggestion data into a structured Slack Block Kit digest. Returns blocks and fallback_text ready to pass to post_slack_message.",
         inputSchema: {
           type: "object",
           properties: {
@@ -291,6 +306,12 @@ function createMcpServer(): Server {
               type: "string",
               description:
                 "Human-readable summary and action items for the week",
+            },
+            cms_opportunities: {
+              type: "array",
+              items: { type: "object" },
+              description:
+                "Optional array of low-CTR page objects from cms-connector get_impressions_vs_ctr, each with url, impressions, current_ctr, suggested_title, suggested_description",
             },
           },
           required: [
@@ -383,20 +404,17 @@ function createMcpServer(): Server {
               impressions: number;
               ctr: number;
             }>,
-            args.top_movers as {
-              movers?: Array<{
-                keyword: string;
-                change: number;
-                direction: string;
-              }>;
-            },
-            args.velocity as {
-              keyword?: string;
-              velocity?: number | null;
-              trend?: string;
-              interpretation?: string;
-            },
             args.summary as string,
+            args.cms_opportunities as Array<{
+              url: string;
+              impressions: number;
+              current_ctr: number;
+              current_title: string;
+              current_description: string;
+              suggested_title: string;
+              suggested_description: string;
+              reasoning?: string;
+            }> | undefined,
           );
           return { content: [{ type: "text", text: JSON.stringify(result) }] };
         }

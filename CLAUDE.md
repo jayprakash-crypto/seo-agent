@@ -17,7 +17,7 @@
 
 ## Current Phase
 Update this line as you move through phases:
-Phase 4 — Reporting MCP server + weekly orchestrator complete
+Phase 2 — CMS Connector MCP server + WordPress plugin + weekly orchestrator step2 complete
 
 ## MCP Template
 All new servers copy from src/mcp-template/server.ts

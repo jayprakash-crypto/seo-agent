@@ -14,14 +14,9 @@ TIMEOUT_SECONDS = 15 * 60  # 15 minutes hard limit
 MAX_RETRIES = 3
 RETRY_BACKOFF = [2, 5, 10]  # seconds between retries
 
-KEYWORD_TRACKER_URL = os.environ.get(
-    "KEYWORD_TRACKER_URL",
-    "https://keyword-tracker-seo-agent.up.railway.app/mcp",
-)
-REPORTING_URL = os.environ.get(
-    "REPORTING_URL",
-    "https://reporting-seo-agent.up.railway.app/mcp",
-)
+KEYWORD_TRACKER_URL = "https://keyword-tracker-seo-agent.up.railway.app/mcp"
+CMS_CONNECTOR_URL = "https://cms-connector-seo-agent.up.railway.app/mcp"
+REPORTING_URL = "https://reporting-seo-agent.up.railway.app/mcp"
 
 keywords = {
     1: ["homecare", "elder care", "home health care", "senior care"],
@@ -86,15 +81,79 @@ Return ONLY a JSON object with keys: rankings (array), top_movers (object), velo
         return {"rankings": [], "top_movers": {"movers": []}, "velocity": {}, "summary": text}
 
 
+# ── Step 2: CMS Connector ─────────────────────────────────────────────
+def step2_cms_connector(client: anthropic.Anthropic, site_id: int) -> dict:
+    """Find low-CTR pages and suggest meta improvements via cms-connector MCP."""
+    print(f"\n[step2] Analyzing low-CTR pages for site_id={site_id}...")
+
+    dry_run_note = (
+        "\nIMPORTANT: DRY_RUN mode is active. Suggest meta improvements but do NOT call update_page_meta."
+        # if DRY_RUN else
+        # "\nFor each page, call update_page_meta with the improved title and description."
+    )
+
+    response = call_with_retry(
+        client,
+        "step2",
+        model="claude-sonnet-4-5",
+        max_tokens=8192,
+        mcp_servers=[{"type": "url", "url": CMS_CONNECTOR_URL, "name": "cms-connector"}],
+        messages=[{
+            "role": "user",
+            "content": f"""You are an SEO content analyst for site_id={site_id}.
+
+Call in order:
+1. get_impressions_vs_ctr with site_id={site_id} and days=28
+2. From the results, take the top 5 pages by impressions (highest impression count first)
+3. For each of those 5 pages, call get_page with site_id={site_id} and the page URL
+4. Suggest improved title and meta description for each page to increase CTR{dry_run_note}
+
+Return ONLY a JSON object with keys:
+- opportunities: array of objects with url, current_ctr, impressions, current_title, current_description, suggested_title, suggested_description, reasoning
+- summary: string with 2-3 overall action items
+
+No extra text.""",
+        }],
+        betas=["mcp-client-2025-04-04"],
+    )
+
+    text = "".join(block.text for block in response.content if hasattr(block, "text")).strip()
+    print(f"[step2] Done. Stop reason: {response.stop_reason}")
+
+    if DRY_RUN:
+        print(f"[step2] DRY_RUN=true — suggestions printed, update_page_meta skipped")
+        print(f"[step2] Suggestions:\n{text[:500]}")
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        import re
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+        print(f"[step2] Warning: could not parse JSON from response. Raw: {text[:200]}")
+        return {"opportunities": [], "summary": text}
+
+
 # ── Step 5: Reporting ─────────────────────────────────────────────────
-def step5_reporting(client: anthropic.Anthropic, site_id: int, data: dict) -> None:
+def step5_reporting(client: anthropic.Anthropic, site_id: int, data: dict, cms_data: dict | None = None) -> None:
     """Format digest and post to Slack; log to Google Sheets."""
     print(f"\n[step5] Posting weekly digest for site_id={site_id}...")
 
     if DRY_RUN:
         print("[step5] DRY_RUN=true — skipping Slack post and Sheets writes")
         print(f"[step5] Would post digest with {len(data.get('rankings', []))} rankings")
+        if cms_data:
+            print(f"[step5] CMS step2 found {len(cms_data.get('opportunities', []))} low-CTR opportunities")
         return
+
+    cms_section = ""
+    if cms_data and cms_data.get("opportunities"):
+        cms_section = f"""
+5. Call log_recommendation with site_id={site_id}, module="cms-connector", a concise recommendation from the cms_data summary, outcome="pending\""""
+
+    cms_opportunities = (cms_data or {}).get("opportunities", [])
+    cms_summary = (cms_data or {}).get("summary", "")
 
     response = call_with_retry(
         client,
@@ -106,14 +165,23 @@ def step5_reporting(client: anthropic.Anthropic, site_id: int, data: dict) -> No
             "role": "user",
             "content": f"""You are an SEO reporting agent for site_id={site_id}.
 
-This week's keyword performance data:
+Here is all data collected this week:
+
+## Step 1 — Keyword Performance
 {json.dumps(data, indent=2)}
 
+## Step 2 — CMS Meta Suggestions (low-CTR pages)
+{json.dumps(cms_opportunities, indent=2) if cms_opportunities else "No opportunities identified."}
+CMS summary: {cms_summary or "N/A"}
+
 Please do all of the following in order:
-1. Call create_weekly_digest with site_id={site_id} and the rankings, top_movers, velocity, and summary from the data above
+1. Call create_weekly_digest with:
+   - site_id={site_id}
+   - rankings, summary from the keyword data above
+   - cms_opportunities: the list of CMS meta suggestions above (pass as-is, each item has url, impressions, current_ctr, current_title, current_description, suggested_title, suggested_description)
 2. Call post_slack_message using the blocks and fallback_text returned by create_weekly_digest
 3. Call write_to_sheet with site_id={site_id}, tab_name="Rankings", and the rankings data formatted as rows: [[date, keyword, position, clicks, impressions, ctr], ...]
-4. Call log_recommendation with site_id={site_id}, module="keyword-tracker", a concise recommendation from the summary, outcome="pending"
+4. Call log_recommendation with site_id={site_id}, module="keyword-tracker", a concise recommendation from the keyword summary, outcome="pending"{cms_section}
 
 Confirm when all steps are complete.""",
         }],
@@ -145,9 +213,17 @@ def run_weekly_tasks(site_id: int) -> None:
         errors["step1"] = str(exc)
         print(f"[step1] ERROR: {exc}")
 
-    # ── Steps 2–4: Skipped (Phase 2/3 not yet implemented) ────────────
-    print("\n[step2] Skipped — cms-connector (Phase 2)")
-    print("[step3] Skipped — schema-manager (Phase 3)")
+    # ── Step 2: CMS connector — low-CTR page analysis ────────────────
+    cms_data: dict = {}
+    try:
+        cms_data = step2_cms_connector(client, site_id)
+        print(f"""cms_data: {json.dumps(cms_data, indent=2)}""")
+    except Exception as exc:
+        errors["step2"] = str(exc)
+        print(f"[step2] ERROR: {exc}")
+
+    # ── Steps 3–4: Skipped (Phase 3 not yet implemented) ──────────────
+    print("\n[step3] Skipped — schema-manager (Phase 3)")
     print("[step4] Skipped — competitor-intel (Phase 3)")
 
     # ── Timeout check ─────────────────────────────────────────────────
@@ -159,7 +235,7 @@ def run_weekly_tasks(site_id: int) -> None:
 
     # ── Step 5: Reporting ─────────────────────────────────────────────
     try:
-        step5_reporting(client, site_id, keyword_data)
+        step5_reporting(client, site_id, keyword_data, cms_data)
     except Exception as exc:
         errors["step5"] = str(exc)
         print(f"[step5] ERROR: {exc}")

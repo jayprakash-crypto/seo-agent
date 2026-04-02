@@ -72,7 +72,6 @@ let postSlackMessage: ReportingModule['postSlackMessage'];
 let createWeeklyDigest: ReportingModule['createWeeklyDigest'];
 let writeToSheet: ReportingModule['writeToSheet'];
 let logRecommendation: ReportingModule['logRecommendation'];
-let callSlackApi: ReportingModule['callSlackApi'];
 
 beforeAll(async () => {
   const mod = await import('../src/mcp-servers/reporting/server.js');
@@ -80,7 +79,6 @@ beforeAll(async () => {
   createWeeklyDigest = mod.createWeeklyDigest;
   writeToSheet = mod.writeToSheet;
   logRecommendation = mod.logRecommendation;
-  callSlackApi = mod.callSlackApi;
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -118,19 +116,6 @@ const SAMPLE_RANKINGS = [
   { keyword: 'senior care', position: 8.5, clicks: 120, impressions: 2200, ctr: 0.054 },
 ];
 
-const SAMPLE_TOP_MOVERS = {
-  movers: [
-    { keyword: 'home care', change: 4.5, direction: 'up' },
-    { keyword: 'senior care', change: -2.3, direction: 'down' },
-  ],
-};
-
-const SAMPLE_VELOCITY = {
-  keyword: 'home care',
-  velocity: -0.32,
-  trend: 'improving',
-  interpretation: 'Position changing by 0.32 places/day (improving)',
-};
 
 // ── postSlackMessage ──────────────────────────────────────────────────
 describe('postSlackMessage', () => {
@@ -163,8 +148,6 @@ describe('postSlackMessage', () => {
     setupSlackRequest({ ok: true, ts: '2222', channel: 'C12345' });
     const blocks = [{ type: 'section', text: { type: 'mrkdwn', text: '*test*' } }];
     await postSlackMessage('Fallback', blocks);
-    const body = JSON.parse((mockRequest.mock.calls[0] as [unknown, unknown, string])[2] as string ?? '{}');
-    // mockRequest is called with (options, callback) — body is passed via write
     expect(mockRequest).toHaveBeenCalled();
   });
 
@@ -198,10 +181,23 @@ describe('postSlackMessage', () => {
   });
 });
 
+const SAMPLE_CMS_OPPORTUNITIES = [
+  {
+    url: 'https://lifecircle.in/home-care/',
+    impressions: 2000,
+    current_ctr: 0.01,
+    current_title: 'Home Care',
+    current_description: 'We offer home care.',
+    suggested_title: 'Trusted Home Care Services Near You',
+    suggested_description: 'Award-winning in-home care for seniors. Book a free consultation today.',
+    reasoning: 'Title lacks intent signal; description has no CTA.',
+  },
+];
+
 // ── createWeeklyDigest ────────────────────────────────────────────────
 describe('createWeeklyDigest', () => {
   it('returns correct block structure', () => {
-    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, SAMPLE_TOP_MOVERS, SAMPLE_VELOCITY, 'Focus on home care.');
+    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Focus on home care.');
     expect(result.site_id).toBe(1);
     expect(result.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(result.blocks).toBeInstanceOf(Array);
@@ -209,14 +205,14 @@ describe('createWeeklyDigest', () => {
   });
 
   it('includes header block with site_id', () => {
-    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, SAMPLE_TOP_MOVERS, SAMPLE_VELOCITY, 'Test');
+    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Test');
     const header = result.blocks.find((b) => b.type === 'header');
     expect(header).toBeDefined();
-    expect((header as { text: { text: string } }).text.text).toContain('Site 1');
+    expect((header as { text: { text: string } }).text.text).toContain('lifecircle.in');
   });
 
   it('renders keyword rankings in a section block', () => {
-    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, SAMPLE_TOP_MOVERS, SAMPLE_VELOCITY, 'Test');
+    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Test');
     const sections = result.blocks.filter((b) => b.type === 'section');
     const rankSection = sections.find((s) =>
       (s as { text: { text: string } }).text.text.includes('home care'),
@@ -224,33 +220,34 @@ describe('createWeeklyDigest', () => {
     expect(rankSection).toBeDefined();
   });
 
-  it('shows up/down emoji for movers', () => {
-    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, SAMPLE_TOP_MOVERS, SAMPLE_VELOCITY, 'Test');
-    const blocksText = JSON.stringify(result.blocks);
-    expect(blocksText).toContain('⬆️');
-    expect(blocksText).toContain('⬇️');
-  });
-
   it('handles empty rankings gracefully', () => {
-    const result = createWeeklyDigest(1, [], SAMPLE_TOP_MOVERS, SAMPLE_VELOCITY, 'Test');
+    const result = createWeeklyDigest(1, [], 'Test');
     const blocksText = JSON.stringify(result.blocks);
     expect(blocksText).toContain('No ranking data available');
   });
 
-  it('handles empty movers gracefully', () => {
-    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, { movers: [] }, SAMPLE_VELOCITY, 'Test');
+  it('renders cms meta suggestions when cms_opportunities provided', () => {
+    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Test', SAMPLE_CMS_OPPORTUNITIES);
     const blocksText = JSON.stringify(result.blocks);
-    expect(blocksText).toContain('No significant movers');
+    expect(blocksText).toContain('Meta Suggestions');
+    expect(blocksText).toContain('Trusted Home Care Services Near You');
+    expect(blocksText).toContain('current_ctr' in SAMPLE_CMS_OPPORTUNITIES[0] ? '1.0%' : '');
   });
 
-  it('handles missing velocity gracefully', () => {
-    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, SAMPLE_TOP_MOVERS, {}, 'Test');
+  it('shows no opportunities message when cms_opportunities is empty', () => {
+    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Test', []);
     const blocksText = JSON.stringify(result.blocks);
-    expect(blocksText).toContain('No velocity data available');
+    expect(blocksText).toContain('No low-CTR opportunities identified');
   });
 
-  it('includes summary in the last section', () => {
-    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, SAMPLE_TOP_MOVERS, SAMPLE_VELOCITY, 'Increase budget for home care ads.');
+  it('shows no opportunities message when cms_opportunities is omitted', () => {
+    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Test');
+    const blocksText = JSON.stringify(result.blocks);
+    expect(blocksText).toContain('No low-CTR opportunities identified');
+  });
+
+  it('includes summary in a section block', () => {
+    const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Increase budget for home care ads.');
     const blocksText = JSON.stringify(result.blocks);
     expect(blocksText).toContain('Increase budget for home care ads');
   });
