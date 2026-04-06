@@ -511,6 +511,7 @@ function createMcpServer(): Server {
           throw new Error(`Unknown tool: ${name}`);
       }
     } catch (error) {
+      console.error(`Error executing tool ${name}:`, error);
       return {
         content: [
           { type: "text", text: JSON.stringify({ error: String(error) }) },

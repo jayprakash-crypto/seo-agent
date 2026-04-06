@@ -17,9 +17,16 @@ RETRY_BACKOFF = [2, 5, 10]  # seconds between retries
 KEYWORD_TRACKER_URL = "https://keyword-tracker-seo-agent.up.railway.app/mcp"
 CMS_CONNECTOR_URL = "https://cms-connector-seo-agent.up.railway.app/mcp"
 REPORTING_URL = "https://reporting-seo-agent.up.railway.app/mcp"
+SCHEMA_MANAGER_URL = "https://schema-manager-seo-agent.up.railway.app/mcp"
+COMPETITOR_INTEL_URL = "https://competitor-intel-seo-agent.up.railway.app/mcp"
 
 keywords = {
     1: ["homecare", "elder care", "home health care", "senior care"],
+}
+
+# Competitor domains to analyse per site
+competitors = {
+    1: ["www.portea.com", "www.care24.co.in"],
 }
 
 
@@ -135,8 +142,127 @@ No extra text.""",
         return {"opportunities": [], "summary": text}
 
 
+# ── Step 3: Schema Manager ────────────────────────────────────────────
+def step3_schema_manager(client: anthropic.Anthropic, site_id: int, cms_data: dict | None = None) -> dict:
+    """Analyse schema gaps on top low-CTR pages via schema-manager MCP."""
+    print(f"\n[step3] Analysing schema gaps for site_id={site_id}...")
+
+    # Pick top 3 page URLs from cms_data opportunities, fall back to site root
+    top_pages: list[str] = []
+    if cms_data and cms_data.get("opportunities"):
+        top_pages = [o["url"] for o in cms_data["opportunities"][:3] if o.get("url")]
+    if not top_pages:
+        top_pages = ["https://lifecircle.in"]  # fallback to site root
+
+    pages_list = "\n".join(f"- {url}" for url in top_pages)
+
+    response = call_with_retry(
+        client,
+        "step3",
+        model="claude-sonnet-4-5",
+        max_tokens=8192,
+        mcp_servers=[{"type": "url", "url": SCHEMA_MANAGER_URL, "name": "schema-manager"}],
+        messages=[{
+            "role": "user",
+            "content": f"""You are an SEO schema analyst for site_id={site_id}.
+
+Analyse schema markup on the following pages:
+{pages_list}
+
+For each page:
+1. Call suggest_schema_improvements with site_id={site_id} and the page URL
+2. If the page has missing schema types, note the suggestions
+
+Also call get_paa_questions with site_id={site_id} for keyword "home care services" to identify FAQ schema opportunities.
+
+Return ONLY a JSON object with keys:
+- pages: array of objects with url, page_type, missing_types (array), has_gaps (bool), suggestions (array)
+- paa_questions: array of question strings (top 5)
+- summary: string with 2-3 schema improvement action items
+
+No extra text.""",
+        }],
+        betas=["mcp-client-2025-04-04"],
+    )
+
+    text = "".join(block.text for block in response.content if hasattr(block, "text")).strip()
+    print(f"[step3] Done. Stop reason: {response.stop_reason}")
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        import re
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+        print(f"[step3] Warning: could not parse JSON. Raw: {text[:200]}")
+        return {"pages": [], "paa_questions": [], "summary": text}
+
+
+# ── Step 4: Competitor Intel ──────────────────────────────────────────
+def step4_competitor_intel(client: anthropic.Anthropic, site_id: int) -> dict:
+    """Analyse competitor keyword gaps and content gaps via competitor-intel MCP."""
+    print(f"\n[step4] Running competitor analysis for site_id={site_id}...")
+
+    site_competitors = competitors.get(site_id, [])
+    if not site_competitors:
+        print(f"[step4] No competitors configured for site_id={site_id}, skipping.")
+        return {"keyword_gaps": [], "content_gaps": [], "summary": "No competitors configured."}
+
+    competitor_domain = site_competitors[0]  # Analyse primary competitor
+
+    response = call_with_retry(
+        client,
+        "step4",
+        model="claude-sonnet-4-5",
+        max_tokens=8192,
+        mcp_servers=[{"type": "url", "url": COMPETITOR_INTEL_URL, "name": "competitor-intel"}],
+        messages=[{
+            "role": "user",
+            "content": f"""You are a competitive SEO analyst for site_id={site_id}.
+
+Analyse competitor domain: {competitor_domain}
+
+Call in order:
+1. get_keyword_gaps with site_id={site_id} and competitor_domain="{competitor_domain}"
+2. get_content_gaps with site_id={site_id} and competitor_domain="{competitor_domain}"
+3. get_competitor_backlinks with site_id={site_id} and competitor_domain="{competitor_domain}"
+
+Return ONLY a JSON object with keys:
+- competitor_domain: "{competitor_domain}"
+- keyword_gaps: array of top 10 gap objects (keyword, competitor_position, competitor_volume)
+- content_gaps: array of top 5 topic groups (topic, keyword_count, avg_volume)
+- top_backlinks: array of top 5 backlinks (url_from, domain_rating, anchor)
+- summary: string with 2-3 actionable competitor insights
+
+No extra text.""",
+        }],
+        betas=["mcp-client-2025-04-04"],
+    )
+
+    text = "".join(block.text for block in response.content if hasattr(block, "text")).strip()
+    print(f"[step4] Done. Stop reason: {response.stop_reason}")
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        import re
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+        print(f"[step4] Warning: could not parse JSON. Raw: {text[:200]}")
+        return {"keyword_gaps": [], "content_gaps": [], "summary": text}
+
+
 # ── Step 5: Reporting ─────────────────────────────────────────────────
-def step5_reporting(client: anthropic.Anthropic, site_id: int, data: dict, cms_data: dict | None = None) -> None:
+def step5_reporting(
+    client: anthropic.Anthropic,
+    site_id: int,
+    data: dict,
+    cms_data: dict | None = None,
+    schema_data: dict | None = None,
+    competitor_data: dict | None = None,
+) -> None:
     """Format digest and post to Slack; log to Google Sheets."""
     print(f"\n[step5] Posting weekly digest for site_id={site_id}...")
 
@@ -147,13 +273,29 @@ def step5_reporting(client: anthropic.Anthropic, site_id: int, data: dict, cms_d
             print(f"[step5] CMS step2 found {len(cms_data.get('opportunities', []))} low-CTR opportunities")
         return
 
-    cms_section = ""
-    if cms_data and cms_data.get("opportunities"):
-        cms_section = f"""
-5. Call log_recommendation with site_id={site_id}, module="cms-connector", a concise recommendation from the cms_data summary, outcome="pending\""""
-
     cms_opportunities = (cms_data or {}).get("opportunities", [])
     cms_summary = (cms_data or {}).get("summary", "")
+
+    schema_pages = (schema_data or {}).get("pages", [])
+    schema_summary = (schema_data or {}).get("summary", "")
+    paa_questions = (schema_data or {}).get("paa_questions", [])
+
+    competitor_keyword_gaps = (competitor_data or {}).get("keyword_gaps", [])
+    competitor_content_gaps = (competitor_data or {}).get("content_gaps", [])
+    competitor_summary = (competitor_data or {}).get("summary", "")
+    competitor_domain = (competitor_data or {}).get("competitor_domain", "")
+
+    # Build extra log_recommendation steps
+    extra_log_steps = ""
+    step_num = 5
+    if cms_data and cms_data.get("opportunities"):
+        extra_log_steps += f"\n{step_num}. Call log_recommendation with site_id={site_id}, module=\"cms-connector\", a concise recommendation from the cms_data summary, outcome=\"pending\""
+        step_num += 1
+    if schema_data and schema_data.get("pages"):
+        extra_log_steps += f"\n{step_num}. Call log_recommendation with site_id={site_id}, module=\"schema-manager\", a concise recommendation from the schema summary, outcome=\"pending\""
+        step_num += 1
+    if competitor_data and competitor_data.get("keyword_gaps"):
+        extra_log_steps += f"\n{step_num}. Call log_recommendation with site_id={site_id}, module=\"competitor-intel\", a concise recommendation from the competitor summary, outcome=\"pending\""
 
     response = call_with_retry(
         client,
@@ -174,14 +316,27 @@ Here is all data collected this week:
 {json.dumps(cms_opportunities, indent=2) if cms_opportunities else "No opportunities identified."}
 CMS summary: {cms_summary or "N/A"}
 
+## Step 3 — Schema Gaps
+{json.dumps(schema_pages, indent=2) if schema_pages else "No schema gap data."}
+Schema summary: {schema_summary or "N/A"}
+PAA questions identified: {json.dumps(paa_questions[:5]) if paa_questions else "None"}
+
+## Step 4 — Competitor Intelligence
+Competitor: {competitor_domain or "N/A"}
+Keyword gaps (top 10): {json.dumps(competitor_keyword_gaps[:10], indent=2) if competitor_keyword_gaps else "No gaps identified."}
+Content gaps (top 5 topics): {json.dumps(competitor_content_gaps[:5], indent=2) if competitor_content_gaps else "No content gaps."}
+Competitor summary: {competitor_summary or "N/A"}
+
 Please do all of the following in order:
 1. Call create_weekly_digest with:
    - site_id={site_id}
    - rankings, summary from the keyword data above
-   - cms_opportunities: the list of CMS meta suggestions above (pass as-is, each item has url, impressions, current_ctr, current_title, current_description, suggested_title, suggested_description)
+   - cms_opportunities: the list of CMS meta suggestions from above (pass as-is, each item has url, impressions, current_ctr, current_title, current_description, suggested_title, suggested_description)
+   - schema_gaps: the schema pages data from above
+   - competitor_alerts: the competitor keyword gaps above
 2. Call post_slack_message using the blocks and fallback_text returned by create_weekly_digest
 3. Call write_to_sheet with site_id={site_id}, tab_name="Rankings", and the rankings data formatted as rows: [[date, keyword, position, clicks, impressions, ctr], ...]
-4. Call log_recommendation with site_id={site_id}, module="keyword-tracker", a concise recommendation from the keyword summary, outcome="pending"{cms_section}
+4. Call log_recommendation with site_id={site_id}, module="keyword-tracker", a concise recommendation from the keyword summary, outcome="pending"{extra_log_steps}
 
 Confirm when all steps are complete.""",
         }],
@@ -217,14 +372,25 @@ def run_weekly_tasks(site_id: int) -> None:
     cms_data: dict = {}
     try:
         cms_data = step2_cms_connector(client, site_id)
-        print(f"""cms_data: {json.dumps(cms_data, indent=2)}""")
     except Exception as exc:
         errors["step2"] = str(exc)
         print(f"[step2] ERROR: {exc}")
 
-    # ── Steps 3–4: Skipped (Phase 3 not yet implemented) ──────────────
-    print("\n[step3] Skipped — schema-manager (Phase 3)")
-    print("[step4] Skipped — competitor-intel (Phase 3)")
+    # ── Step 3: Schema manager ────────────────────────────────────────
+    schema_data: dict = {}
+    try:
+        schema_data = step3_schema_manager(client, site_id, cms_data)
+    except Exception as exc:
+        errors["step3"] = str(exc)
+        print(f"[step3] ERROR: {exc}")
+
+    # ── Step 4: Competitor intel ──────────────────────────────────────
+    competitor_data: dict = {}
+    try:
+        competitor_data = step4_competitor_intel(client, site_id)
+    except Exception as exc:
+        errors["step4"] = str(exc)
+        print(f"[step4] ERROR: {exc}")
 
     # ── Timeout check ─────────────────────────────────────────────────
     elapsed = time.time() - start_time
@@ -235,7 +401,7 @@ def run_weekly_tasks(site_id: int) -> None:
 
     # ── Step 5: Reporting ─────────────────────────────────────────────
     try:
-        step5_reporting(client, site_id, keyword_data, cms_data)
+        step5_reporting(client, site_id, keyword_data, cms_data, schema_data, competitor_data)
     except Exception as exc:
         errors["step5"] = str(exc)
         print(f"[step5] ERROR: {exc}")

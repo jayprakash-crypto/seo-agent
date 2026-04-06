@@ -124,6 +124,17 @@ export function createWeeklyDigest(
     suggested_description: string;
     reasoning?: string;
   }>,
+  schemaGaps?: Array<{
+    url: string;
+    page_type: string;
+    missing_types: string[];
+    has_gaps: boolean;
+  }>,
+  competitorAlerts?: Array<{
+    keyword: string;
+    competitor_position: number;
+    competitor_volume: number;
+  }>,
 ) {
   const today = new Date().toISOString().split("T")[0];
 
@@ -141,26 +152,48 @@ export function createWeeklyDigest(
   const opportunities = cmsOpportunities ?? [];
   const cmsLines = opportunities.length
     ? opportunities
-        .map(
-          (o) => {
-            console.log("============= Processing CMS Opportunity ***************\n", o);
-            const page = o.url;
-            const ctr = (o.current_ctr * 100).toFixed(1);
-            return (
-              `• *${page}* (${o.impressions.toLocaleString()} impr, ${ctr}% CTR)\n` +
-              `    *Current:*\n` +
-              `        _Title:_ ${o.current_title}\n` +
-              `        _Desc:_ ${o.current_description}\n\n`+
-              `    *Suggestion:*\n` +
-              `        _Title:_ ${o.suggested_title}\n` +
-              `        _Desc:_ ${o.suggested_description}\n\n` +
-              `    _Reasoning:_ ${o.reasoning ?? "N/A"}`
-            );
-          },
-        )
+        .map((o) => {
+          console.log("============= Processing CMS Opportunity ***************\n", o);
+          const page = o.url;
+          const ctr = (o.current_ctr * 100).toFixed(1);
+          return (
+            `• *${page}* (${o.impressions.toLocaleString()} impr, ${ctr}% CTR)\n` +
+            `    *Current:*\n` +
+            `        _Title:_ ${o.current_title}\n` +
+            `        _Desc:_ ${o.current_description}\n\n` +
+            `    *Suggestion:*\n` +
+            `        _Title:_ ${o.suggested_title}\n` +
+            `        _Desc:_ ${o.suggested_description}\n\n` +
+            `    _Reasoning:_ ${o.reasoning ?? "N/A"}`
+          );
+        })
         .join("\n\n")
     : "No low-CTR opportunities identified this week.";
   console.log("========== CMS Opportunities Processed **********");
+
+  // Build schema gaps section
+  const gaps = schemaGaps ?? [];
+  const schemaLines = gaps.filter((g) => g.has_gaps).length
+    ? gaps
+        .filter((g) => g.has_gaps)
+        .map(
+          (g) =>
+            `• *${g.url}* (${g.page_type})\n    Missing: ${g.missing_types.join(", ")}`,
+        )
+        .join("\n")
+    : "No schema gaps identified this week.";
+
+  // Build competitor alerts section
+  const alerts = competitorAlerts ?? [];
+  const competitorLines = alerts.length
+    ? alerts
+        .slice(0, 10)
+        .map(
+          (a) =>
+            `• *${a.keyword}* — competitor pos ${a.competitor_position}, vol ${a.competitor_volume.toLocaleString()}`,
+        )
+        .join("\n")
+    : "No competitor keyword gaps identified this week.";
 
   const blocks = [
     {
@@ -186,6 +219,22 @@ export function createWeeklyDigest(
       text: {
         type: "mrkdwn",
         text: `*✏️ Meta Suggestions (Low-CTR Pages)*\n${cmsLines}`,
+      },
+    },
+    { type: "divider" },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*🧩 Schema Gaps*\n${schemaLines}`,
+      },
+    },
+    { type: "divider" },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*🕵️ Competitor Keyword Gaps*\n${competitorLines}`,
       },
     },
     { type: "divider" },
@@ -284,7 +333,7 @@ function createMcpServer(): Server {
       {
         name: "create_weekly_digest",
         description:
-          "Format keyword performance and CMS meta suggestion data into a structured Slack Block Kit digest. Returns blocks and fallback_text ready to pass to post_slack_message.",
+          "Format keyword performance, CMS meta suggestions, schema gaps, and competitor alerts into a structured Slack Block Kit digest. Returns blocks and fallback_text ready to pass to post_slack_message.",
         inputSchema: {
           type: "object",
           properties: {
@@ -311,7 +360,19 @@ function createMcpServer(): Server {
               type: "array",
               items: { type: "object" },
               description:
-                "Optional array of low-CTR page objects from cms-connector get_impressions_vs_ctr, each with url, impressions, current_ctr, suggested_title, suggested_description",
+                "Optional array of low-CTR page objects from cms-connector, each with url, impressions, current_ctr, suggested_title, suggested_description",
+            },
+            schema_gaps: {
+              type: "array",
+              items: { type: "object" },
+              description:
+                "Optional array of schema gap objects from schema-manager, each with url, page_type, missing_types, has_gaps",
+            },
+            competitor_alerts: {
+              type: "array",
+              items: { type: "object" },
+              description:
+                "Optional array of competitor keyword gap objects from competitor-intel, each with keyword, competitor_position, competitor_volume",
             },
           },
           required: [
@@ -405,16 +466,33 @@ function createMcpServer(): Server {
               ctr: number;
             }>,
             args.summary as string,
-            args.cms_opportunities as Array<{
-              url: string;
-              impressions: number;
-              current_ctr: number;
-              current_title: string;
-              current_description: string;
-              suggested_title: string;
-              suggested_description: string;
-              reasoning?: string;
-            }> | undefined,
+            args.cms_opportunities as
+              | Array<{
+                  url: string;
+                  impressions: number;
+                  current_ctr: number;
+                  current_title: string;
+                  current_description: string;
+                  suggested_title: string;
+                  suggested_description: string;
+                  reasoning?: string;
+                }>
+              | undefined,
+            args.schema_gaps as
+              | Array<{
+                  url: string;
+                  page_type: string;
+                  missing_types: string[];
+                  has_gaps: boolean;
+                }>
+              | undefined,
+            args.competitor_alerts as
+              | Array<{
+                  keyword: string;
+                  competitor_position: number;
+                  competitor_volume: number;
+                }>
+              | undefined,
           );
           return { content: [{ type: "text", text: JSON.stringify(result) }] };
         }
@@ -441,6 +519,7 @@ function createMcpServer(): Server {
           throw new Error(`Unknown tool: ${name}`);
       }
     } catch (error) {
+      console.error(`Error executing tool ${name}:`, error);
       return {
         content: [
           { type: "text", text: JSON.stringify({ error: String(error) }) },

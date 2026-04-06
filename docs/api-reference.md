@@ -356,6 +356,243 @@ Return pages where impressions > 100 but CTR < 3%, sorted by impressions descend
 
 ---
 
+### schema-manager
+
+Extracts and improves JSON-LD schema markup on WordPress pages. Fetches PAA questions from SerpAPI.
+Credentials: `CMS_API_URL_SITE_{site_id}`, `CMS_API_KEY_SITE_{site_id}` (WordPress REST API), `SERPAPI_KEY`.
+
+---
+
+#### `get_current_schema`
+
+Fetches a page by URL and extracts all `<script type="application/ld+json">` blocks.
+
+**Parameters**
+
+| Name      | Type     | Required | Description             |
+|-----------|----------|----------|-------------------------|
+| `site_id` | `number` | yes      | Site ID                 |
+| `url`     | `string` | yes      | Full URL of the page    |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "url": "https://lifecircle.in/home-care/",
+  "schema_count": 2,
+  "schemas": [
+    { "@context": "https://schema.org", "@type": "LocalBusiness", "name": "LifeCircle" },
+    { "@context": "https://schema.org", "@type": "WebSite", "url": "https://lifecircle.in" }
+  ]
+}
+```
+
+---
+
+#### `get_paa_questions`
+
+Calls SerpAPI to retrieve People Also Ask (PAA) questions for a keyword.
+
+**Parameters**
+
+| Name      | Type     | Required | Description                          |
+|-----------|----------|----------|--------------------------------------|
+| `site_id` | `number` | yes      | Site ID                              |
+| `keyword` | `string` | yes      | Keyword to look up PAA questions for |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "keyword": "home care services",
+  "questions_count": 3,
+  "questions": [
+    { "question": "What is home care?", "snippet": "Home care is..." },
+    { "question": "How much does home care cost?", "snippet": "It varies." }
+  ]
+}
+```
+
+---
+
+#### `suggest_schema_improvements`
+
+Detects page type (home/service/faq/blog/contact/default) from URL and compares existing schema types against best-practice recommendations.
+
+**Parameters**
+
+| Name      | Type     | Required | Description           |
+|-----------|----------|----------|-----------------------|
+| `site_id` | `number` | yes      | Site ID               |
+| `url`     | `string` | yes      | Full URL of the page  |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "url": "https://lifecircle.in/home-care/",
+  "page_type": "service",
+  "existing_types": ["LocalBusiness"],
+  "recommended_types": ["Service", "LocalBusiness"],
+  "missing_types": ["Service"],
+  "extra_types": [],
+  "has_gaps": true,
+  "suggestions": [
+    { "action": "add", "schema_type": "Service", "reason": "Service schema is recommended for service pages but is missing" }
+  ]
+}
+```
+
+---
+
+#### `push_schema_to_page`
+
+Writes a JSON-LD schema object to a WordPress page via the REST API. Stores it in the `_seo_agent_schema` post meta field. **Never publishes** — only updates meta.
+
+**Parameters**
+
+| Name          | Type     | Required | Description                          |
+|---------------|----------|----------|--------------------------------------|
+| `site_id`     | `number` | yes      | Site ID                              |
+| `url`         | `string` | yes      | Full URL of the target page          |
+| `schema_json` | `object` | yes      | Schema.org JSON-LD object to store   |
+
+**Returns**
+
+```json
+{
+  "ok": true,
+  "id": 42,
+  "url": "https://lifecircle.in/home-care/",
+  "schema_stored": true
+}
+```
+
+---
+
+### competitor-intel
+
+Analyses competitor keyword and backlink profiles via Ahrefs API v3. Compares against the site's own GSC keywords to identify gaps. Results are cached for 24 hours per domain in `/tmp/cache/`.
+Credentials: `AHREFS_KEY`, `GSC_OAUTH_SITE_{site_id}`.
+Rate limiting: 1.5 s between Ahrefs calls (override with `AHREFS_DELAY_MS` env var).
+
+---
+
+#### `get_competitor_keywords`
+
+Fetches the top 50 organic keywords a competitor domain ranks for via Ahrefs API v3.
+
+**Parameters**
+
+| Name                | Type     | Required | Description                           |
+|---------------------|----------|----------|---------------------------------------|
+| `site_id`           | `number` | yes      | Site ID                               |
+| `competitor_domain` | `string` | yes      | Competitor domain (e.g. `example.com`) |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "competitor_domain": "competitor.com",
+  "keywords_count": 50,
+  "keywords": [
+    { "keyword": "elder care services", "position": 3, "volume": 5000, "traffic": 200 }
+  ],
+  "cached": false
+}
+```
+
+---
+
+#### `get_keyword_gaps`
+
+Compares the site's GSC keywords (last 28 days) against a competitor's Ahrefs keywords. Returns keywords the competitor ranks for that the site does not.
+
+**Parameters**
+
+| Name                | Type     | Required | Description             |
+|---------------------|----------|----------|-------------------------|
+| `site_id`           | `number` | yes      | Site ID                 |
+| `competitor_domain` | `string` | yes      | Competitor domain       |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "competitor_domain": "competitor.com",
+  "site_keywords_count": 120,
+  "competitor_keywords_count": 50,
+  "gap_count": 37,
+  "gaps": [
+    { "keyword": "home health aide", "competitor_position": 8, "competitor_volume": 2000 }
+  ]
+}
+```
+
+> Gaps are sorted by `competitor_volume` descending (highest opportunity first).
+
+---
+
+#### `get_competitor_backlinks`
+
+Fetches the top 50 backlinks pointing to a competitor domain via Ahrefs API v3.
+
+**Parameters**
+
+| Name                | Type     | Required | Description             |
+|---------------------|----------|----------|-------------------------|
+| `site_id`           | `number` | yes      | Site ID                 |
+| `competitor_domain` | `string` | yes      | Competitor domain       |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "competitor_domain": "competitor.com",
+  "backlinks_count": 50,
+  "backlinks": [
+    { "url_from": "https://health.com/article", "url_to": "https://competitor.com/", "domain_rating": 72, "anchor": "elder care" }
+  ],
+  "cached": true
+}
+```
+
+---
+
+#### `get_content_gaps`
+
+Clusters keyword gaps into topic groups to identify content areas the competitor covers that the site does not.
+
+**Parameters**
+
+| Name                | Type     | Required | Description             |
+|---------------------|----------|----------|-------------------------|
+| `site_id`           | `number` | yes      | Site ID                 |
+| `competitor_domain` | `string` | yes      | Competitor domain       |
+
+**Returns**
+
+```json
+{
+  "site_id": 1,
+  "competitor_domain": "competitor.com",
+  "topic_groups_count": 5,
+  "topic_groups": [
+    { "topic": "elder", "keywords": ["elder care services", "elder home care"], "keyword_count": 2, "avg_volume": 3500 }
+  ]
+}
+```
+
+> Groups are sorted by `avg_volume` descending.
+
+---
+
 ### rank-tracker
 ### backlink-analyzer
 ### content-auditor
