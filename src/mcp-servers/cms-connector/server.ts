@@ -68,6 +68,14 @@ export async function wpFetch(
   if (body) options.body = JSON.stringify(body);
   console.log("============= WP Getting Page ***************\n", url);
   const res = await fetch(url, options);
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text();
+    throw new Error(
+      `WP API returned non-JSON (${res.status} ${res.statusText}). ` +
+        `Content-Type: ${contentType}. Body starts with: ${text.slice(0, 200)}`,
+    );
+  }
   const data = await res.json();
   if (!res.ok) {
     const errMsg = (data as { message?: string }).message ?? res.statusText;

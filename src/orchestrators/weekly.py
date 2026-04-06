@@ -331,7 +331,7 @@ Please do all of the following in order:
 1. Call create_weekly_digest with:
    - site_id={site_id}
    - rankings, summary from the keyword data above
-   - cms_opportunities: the list of CMS meta suggestions from above (pass as-is, each item has url, impressions, current_ctr, current_title, current_description, suggested_title, suggested_description)
+   - cms_opportunities: the list of CMS meta suggestions from above (pass as-is, each item has url, impressions, current_ctr, current_title, current_description, suggested_title, suggested_description, reasoning)
    - schema_gaps: the schema pages data from above
    - competitor_alerts: the competitor keyword gaps above
 2. Call post_slack_message using the blocks and fallback_text returned by create_weekly_digest

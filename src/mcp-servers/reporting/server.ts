@@ -93,6 +93,7 @@ export async function postSlackMessage(
   const ch = channel ?? process.env.SLACK_CHANNEL_ID;
   if (!ch) throw new Error("Missing env var SLACK_CHANNEL_ID");
 
+  console.log("========== Slack Message **********");
   const body: Record<string, unknown> = { channel: ch, text: message };
   if (blocks) body.blocks = blocks;
 
@@ -102,6 +103,15 @@ export async function postSlackMessage(
   if (!result.ok)
     throw new Error(`Slack API error: ${result.error ?? "unknown"}`);
   return { ok: true, ts: result.ts, channel: result.channel };
+}
+
+// Slack section text is capped at 3000 chars — truncate with a safe margin
+function slackTrunc(text: string, max = 2950): string {
+  return text.length <= max ? text : text.slice(0, max - 3) + "...";
+}
+
+function sectionBlock(text: string) {
+  return { type: "section", text: { type: "mrkdwn", text: slackTrunc(text) } };
 }
 
 export function createWeeklyDigest(
@@ -138,8 +148,10 @@ export function createWeeklyDigest(
 ) {
   const today = new Date().toISOString().split("T")[0];
 
+  // Cap rankings at 15 to stay within block text limits
   const rankLines = rankings.length
     ? rankings
+        .slice(0, 15)
         .map(
           (r) =>
             `• *${r.keyword}*: pos ${r.position ?? "N/A"}, ${r.clicks} clicks, ${(r.ctr * 100).toFixed(1)}% CTR`,
@@ -148,34 +160,11 @@ export function createWeeklyDigest(
     : "No ranking data available.";
   console.log("========== Rankings Processed **********");
 
-  // Build CMS meta suggestions section
-  const opportunities = cmsOpportunities ?? [];
-  const cmsLines = opportunities.length
-    ? opportunities
-        .map((o) => {
-          console.log("============= Processing CMS Opportunity ***************\n", o);
-          const page = o.url;
-          const ctr = (o.current_ctr * 100).toFixed(1);
-          return (
-            `• *${page}* (${o.impressions.toLocaleString()} impr, ${ctr}% CTR)\n` +
-            `    *Current:*\n` +
-            `        _Title:_ ${o.current_title}\n` +
-            `        _Desc:_ ${o.current_description}\n\n` +
-            `    *Suggestion:*\n` +
-            `        _Title:_ ${o.suggested_title}\n` +
-            `        _Desc:_ ${o.suggested_description}\n\n` +
-            `    _Reasoning:_ ${o.reasoning ?? "N/A"}`
-          );
-        })
-        .join("\n\n")
-    : "No low-CTR opportunities identified this week.";
-  console.log("========== CMS Opportunities Processed **********");
-
   // Build schema gaps section
-  const gaps = schemaGaps ?? [];
-  const schemaLines = gaps.filter((g) => g.has_gaps).length
+  const gaps = (schemaGaps ?? []).filter((g) => g.has_gaps);
+  const schemaLines = gaps.length
     ? gaps
-        .filter((g) => g.has_gaps)
+        .slice(0, 10)
         .map(
           (g) =>
             `• *${g.url}* (${g.page_type})\n    Missing: ${g.missing_types.join(", ")}`,
@@ -187,7 +176,7 @@ export function createWeeklyDigest(
   const alerts = competitorAlerts ?? [];
   const competitorLines = alerts.length
     ? alerts
-        .slice(0, 10)
+        .slice(0, 8)
         .map(
           (a) =>
             `• *${a.keyword}* — competitor pos ${a.competitor_position}, vol ${a.competitor_volume.toLocaleString()}`,
@@ -195,12 +184,13 @@ export function createWeeklyDigest(
         .join("\n")
     : "No competitor keyword gaps identified this week.";
 
-  const blocks = [
+  // Header blocks
+  const blocks: object[] = [
     {
       type: "header",
       text: {
         type: "plain_text",
-        text: `📊 Weekly SEO Report — Site ${sites[String(siteId)]}`,
+        text: `Weekly SEO Report — ${sites[String(siteId)] ?? `Site ${siteId}`}`,
         emoji: true,
       },
     },
@@ -209,45 +199,44 @@ export function createWeeklyDigest(
       elements: [{ type: "mrkdwn", text: `*Report date:* ${today}` }],
     },
     { type: "divider" },
-    {
-      type: "section",
-      text: { type: "mrkdwn", text: `*🔑 Keyword Rankings*\n${rankLines}` },
-    },
+    sectionBlock(`*Keyword Rankings*\n${rankLines}`),
     { type: "divider" },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*✏️ Meta Suggestions (Low-CTR Pages)*\n${cmsLines}`,
-      },
-    },
-    { type: "divider" },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*🧩 Schema Gaps*\n${schemaLines}`,
-      },
-    },
-    { type: "divider" },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*🕵️ Competitor Keyword Gaps*\n${competitorLines}`,
-      },
-    },
-    { type: "divider" },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*💡 Summary & Actions*\n${summary || "No summary available."}`,
-      },
-    },
+    sectionBlock(`*Meta Suggestions (Low-CTR Pages)*`),
   ];
 
+  // One block per CMS opportunity to avoid 3000-char limit
+  const opportunities = (cmsOpportunities ?? []).slice(0, 5);
+  if (opportunities.length === 0) {
+    blocks.push(sectionBlock("No low-CTR opportunities identified this week."));
+  } else {
+    for (const o of opportunities) {
+      console.log("============= Processing CMS Opportunity ***************\n", o);
+      const ctr = (o.current_ctr * 100).toFixed(1);
+      const text =
+        `• *${o.url} * (${o.impressions.toLocaleString()} impr, ${ctr}% CTR)\n` +
+        `    *Current:*\n` +
+        `        _Title:_ ${o.current_title}\n` +
+        `        _Desc:_ ${o.current_description}\n` +
+        `    *Suggestion:*\n` +
+        `        _Title:_ ${o.suggested_title}\n` +
+        `        _Desc:_ ${o.suggested_description}\n` +
+        `    *Reasoning:* ${o.reasoning ?? "N/A"}`;
+      blocks.push(sectionBlock(text));
+    }
+  }
+  console.log("========== CMS Opportunities Processed **********");
+
+  blocks.push(
+    { type: "divider" },
+    sectionBlock(`*Schema Gaps*\n${schemaLines}`),
+    { type: "divider" },
+    sectionBlock(`*Competitor Keyword Gaps*\n${competitorLines}`),
+    { type: "divider" },
+    sectionBlock(`*Summary & Actions*\n${summary || "No summary available."}`),
+  );
+
   console.log("========== Weekly Digest Created **********");
+
   return {
     site_id: siteId,
     date: today,
