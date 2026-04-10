@@ -17,7 +17,15 @@
 
 ## Current Phase
 Update this line as you move through phases:
-Phase 3 — Schema Manager + Competitor Intel MCP servers + weekly orchestrator steps 3–4 + reporting digest complete
+Phase 10 — Operator Dashboard complete (Next.js 14 + shadcn/ui + Prisma + NextAuth TOTP 2FA + Socket.io real-time approvals + Railway deployment)
+
+## Dashboard Architecture (Phase 10)
+- Next.js 14 app router in src/dashboard/ — deployed to Vercel
+- Approvals API (Express + Socket.io) in src/api/ — deployed to Railway (port 3002)
+- WebSocket relay server in src/ws-server/ — deployed to Railway (port 3002)
+- 4 panels: Approval Queue, Alert Feed, Site Overview, Config Manager
+- Auth: NextAuth.js credentials + TOTP 2FA (otplib), protected by middleware.ts
+- Real-time: Socket.io client with reconnection:true, reconnectionAttempts:Infinity
 
 ## MCP Template
 All new servers copy from src/mcp-template/server.ts
