@@ -1,0 +1,68 @@
+// Prisma schema — SEO Agent Operator Dashboard
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Approval {
+  id          String    @id @default(cuid())
+  site_id     Int
+  module      String    // 'module-7-gbp', 'module-9-review', 'module-10-page', etc.
+  type        String    // 'gbp_post', 'review_response', 'page_draft', 'meta_rewrite'
+  priority    Int       // 1=critical, 2=high, 3=medium
+  title       String
+  content     Json      // full draft content
+  preview_url String?
+  status      String    @default("pending") // pending, approved, rejected, deferred
+  created_at  DateTime  @default(now())
+  actioned_at DateTime?
+  actioned_by String?
+  reject_reason String?
+
+  action_logs ActionLog[]
+
+  @@index([status, priority])
+  @@index([site_id])
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  site_id     Int
+  module      String
+  severity    String    // 'critical', 'warning', 'info'
+  title       String
+  detail      String
+  status      String    @default("open") // open, acknowledged, resolved
+  created_at  DateTime  @default(now())
+  resolved_at DateTime?
+
+  @@index([status, severity])
+  @@index([site_id])
+}
+
+model ActionLog {
+  id          String    @id @default(cuid())
+  approval_id String?
+  action      String    // 'approved', 'rejected', 'edited', 'deferred'
+  module      String
+  time_spent  Int       // seconds spent reviewing
+  created_at  DateTime  @default(now())
+
+  approval    Approval? @relation(fields: [approval_id], references: [id])
+}
+
+model WeeklyDigest {
+  id          String   @id @default(cuid())
+  site_id     Int
+  week_start  DateTime
+  content     Json     // full Claude digest output
+  top_actions Json     // array of top 3 actions
+  created_at  DateTime @default(now())
+
+  @@index([site_id, week_start])
+}
