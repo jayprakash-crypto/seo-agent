@@ -16,32 +16,37 @@ import {
 
 import type { Alert } from "../controllers/alerts.controller.js";
 
+// Request body shape for POST /alerts (all strings from JSON body)
+interface CreateAlertBody {
+  site_id?: number;
+  module?: string;
+  severity?: Alert["severity"];
+  title?: string;
+  detail?: string;
+}
+
 export function alertsRouter(io: SocketIOServer): Router {
   const router = Router();
 
   // POST /alerts
   router.post("/", async (req: Request, res: Response) => {
     const { site_id, module, severity, title, detail } =
-      req.body as Partial<Alert>;
+      req.body as CreateAlertBody;
 
     if (!site_id || !module || !severity || !title || !detail) {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
 
-    const alert: Alert = {
-      id: randomUUID(),
-      site_id: Number(site_id),
-      module: String(module),
-      severity: severity as Alert["severity"],
-      title: String(title),
-      detail: String(detail),
-      status: "open",
-      created_at: new Date().toISOString(),
-    };
-
     try {
-      await createAlert(alert);
+      const alert = await createAlert({
+        id: randomUUID(),
+        site_id: Number(site_id),
+        module: String(module),
+        severity,
+        title: String(title),
+        detail: String(detail),
+      });
       io.emit("alert:created", alert);
       res.status(201).json(alert);
     } catch (err) {

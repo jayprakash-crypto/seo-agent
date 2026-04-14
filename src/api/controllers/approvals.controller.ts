@@ -1,56 +1,87 @@
 /**
- * Approvals controller — all MySQL query operations for the approvals table.
+ * Approvals controller — all PostgreSQL query operations for the approvals table.
  * Routes in approvals.ts call these functions; no HTTP objects here.
  */
 
-import { ResultSetHeader } from "mysql2/promise";
+// ── MySQL (commented out) ─────────────────────────────────────────────
+// import { ResultSetHeader } from "mysql2/promise";
+// MySQL schema used:
+//   id            VARCHAR(36)   PRIMARY KEY
+//   priority      TINYINT       DEFAULT 3
+//   content       JSON
+//   created_at    DATETIME(3)   DEFAULT CURRENT_TIMESTAMP(3)
+//   actioned_at   DATETIME(3)
+// MySQL used ? placeholders, [rows] destructure, result.affectedRows
+
+// ── PostgreSQL ────────────────────────────────────────────────────────
 import pool from "../db.js";
 
-// ── Types ─────────────────────────────────────────────────────────────
+// ── Types (PostgreSQL-aligned) ────────────────────────────────────────
+// id          → UUID  (pg returns as string)
+// content     → JSONB (pg returns as parsed object, no JSON.parse needed on read)
+// priority    → SMALLINT (1=critical, 2=high, 3=medium)
+// created_at  → TIMESTAMPTZ (pg returns as Date)
+// actioned_at → TIMESTAMPTZ | null
+
 export interface Approval {
+  id: string;                   // UUID
+  site_id: number;              // INTEGER
+  module: string;               // VARCHAR(64)
+  type: string;                 // VARCHAR(64)
+  priority: number;             // SMALLINT — 1=critical, 2=high, 3=medium
+  title: string;                // VARCHAR(255)
+  content: Record<string, unknown>; // JSONB
+  preview_url: string | null;   // VARCHAR(512) | NULL
+  status: "pending" | "approved" | "rejected" | "deferred"; // VARCHAR(16)
+  created_at: Date;             // TIMESTAMPTZ
+  actioned_at: Date | null;     // TIMESTAMPTZ | NULL
+  actioned_by: string | null;   // VARCHAR(64)  | NULL
+  reject_reason: string | null; // VARCHAR(255) | NULL
+}
+
+// Serialised form returned over HTTP (dates as ISO strings for JSON)
+export interface ApprovalJSON {
   id: string;
   site_id: number;
   module: string;
   type: string;
-  priority: number; // 1=critical, 2=high, 3=medium
+  priority: number;
   title: string;
   content: Record<string, unknown>;
-  preview_url?: string;
+  preview_url: string | null;
   status: "pending" | "approved" | "rejected" | "deferred";
   created_at: string;
-  actioned_at?: string;
-  actioned_by?: string;
-  reject_reason?: string;
+  actioned_at: string | null;
+  actioned_by: string | null;
+  reject_reason: string | null;
 }
 
-// ── Row deserialiser ──────────────────────────────────────────────────
-function toApproval(row: Record<string, unknown>): Approval {
+// ── Row serialiser ────────────────────────────────────────────────────
+// pg returns JSONB as a parsed object and TIMESTAMPTZ as a JS Date —
+// we only need to convert Date → ISO string for the HTTP response.
+function toJSON(row: Approval): ApprovalJSON {
   return {
-    ...(row as unknown as Approval),
-    content:
-      typeof row.content === "string"
-        ? (JSON.parse(row.content) as Record<string, unknown>)
-        : (row.content as Record<string, unknown>),
-    created_at:
-      row.created_at instanceof Date
-        ? row.created_at.toISOString()
-        : String(row.created_at),
+    ...row,
+    created_at: row.created_at instanceof Date
+      ? row.created_at.toISOString()
+      : String(row.created_at),
     actioned_at: row.actioned_at
       ? row.actioned_at instanceof Date
         ? row.actioned_at.toISOString()
         : String(row.actioned_at)
-      : undefined,
+      : null,
   };
 }
 
 // ── CREATE ────────────────────────────────────────────────────────────
 export async function createApproval(
   data: Pick<Approval, "id" | "site_id" | "module" | "type" | "priority" | "title" | "content" | "preview_url">,
-): Promise<void> {
-  await pool.query(
+): Promise<ApprovalJSON> {
+  const { rows } = await pool.query<Approval>(
     `INSERT INTO approvals
        (id, site_id, module, type, priority, title, content, preview_url, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(3))`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW())
+     RETURNING *`,
     [
       data.id,
       data.site_id,
@@ -62,6 +93,7 @@ export async function createApproval(
       data.preview_url ?? null,
     ],
   );
+  return toJSON(rows[0]);
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────
@@ -69,30 +101,34 @@ export async function listApprovals(filters: {
   status?: string;
   site_id?: number;
   sort?: string;
-}): Promise<{ approvals: Approval[]; total: number }> {
-  let sql = "SELECT * FROM approvals WHERE 1=1";
+}): Promise<{ approvals: ApprovalJSON[]; total: number }> {
+  const conditions: string[] = [];
   const params: unknown[] = [];
+  let i = 1;
 
-  if (filters.status)  { sql += " AND status = ?";  params.push(filters.status); }
-  if (filters.site_id) { sql += " AND site_id = ?"; params.push(filters.site_id); }
+  if (filters.status)  { conditions.push(`status = $${i++}`);  params.push(filters.status); }
+  if (filters.site_id) { conditions.push(`site_id = $${i++}`); params.push(filters.site_id); }
 
-  sql += filters.sort === "priority"
-    ? " ORDER BY priority ASC"
-    : " ORDER BY created_at DESC";
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const order = filters.sort === "priority"
+    ? "ORDER BY priority ASC"
+    : "ORDER BY created_at DESC";
 
-  const [rows] = await pool.query(sql, params);
-  const approvals = (rows as Record<string, unknown>[]).map(toApproval);
+  const { rows } = await pool.query<Approval>(
+    `SELECT * FROM approvals ${where} ${order}`,
+    params,
+  );
+  const approvals = rows.map(toJSON);
   return { approvals, total: approvals.length };
 }
 
 // ── GET BY ID ─────────────────────────────────────────────────────────
-export async function getApprovalById(id: string): Promise<Approval | null> {
-  const [rows] = await pool.query(
-    "SELECT * FROM approvals WHERE id = ?",
+export async function getApprovalById(id: string): Promise<ApprovalJSON | null> {
+  const { rows } = await pool.query<Approval>(
+    "SELECT * FROM approvals WHERE id = $1",
     [id],
   );
-  const list = rows as Record<string, unknown>[];
-  return list.length ? toApproval(list[0]) : null;
+  return rows.length ? toJSON(rows[0]) : null;
 }
 
 // ── APPROVE ───────────────────────────────────────────────────────────
@@ -100,23 +136,22 @@ export async function approveApproval(
   id: string,
   actionedBy: string,
   content?: Record<string, unknown>,
-): Promise<Approval | null> {
-  const sets = ["status = 'approved'", "actioned_at = NOW(3)", "actioned_by = ?"];
+): Promise<ApprovalJSON | null> {
+  const sets = ["status = 'approved'", "actioned_at = NOW()", "actioned_by = $1"];
   const params: unknown[] = [actionedBy];
+  let i = 2;
 
   if (content) {
-    sets.push("content = ?");
+    sets.push(`content = $${i++}`);
     params.push(JSON.stringify(content));
   }
   params.push(id);
 
-  const [result] = await pool.query(
-    `UPDATE approvals SET ${sets.join(", ")} WHERE id = ?`,
+  const { rows } = await pool.query<Approval>(
+    `UPDATE approvals SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
     params,
-  ) as ResultSetHeader[];
-
-  if (!result.affectedRows) return null;
-  return getApprovalById(id);
+  );
+  return rows.length ? toJSON(rows[0]) : null;
 }
 
 // ── REJECT ────────────────────────────────────────────────────────────
@@ -124,48 +159,45 @@ export async function rejectApproval(
   id: string,
   actionedBy: string,
   reason: string,
-): Promise<Approval | null> {
-  const [result] = await pool.query(
+): Promise<ApprovalJSON | null> {
+  const { rows } = await pool.query<Approval>(
     `UPDATE approvals
-     SET status = 'rejected', actioned_at = NOW(3), actioned_by = ?, reject_reason = ?
-     WHERE id = ?`,
+     SET status = 'rejected', actioned_at = NOW(), actioned_by = $1, reject_reason = $2
+     WHERE id = $3
+     RETURNING *`,
     [actionedBy, reason, id],
-  ) as ResultSetHeader[];
-
-  if (!result.affectedRows) return null;
-  return getApprovalById(id);
+  );
+  return rows.length ? toJSON(rows[0]) : null;
 }
 
 // ── DEFER ─────────────────────────────────────────────────────────────
-export async function deferApproval(id: string): Promise<Approval | null> {
-  const [result] = await pool.query(
-    "UPDATE approvals SET status = 'deferred', actioned_at = NOW(3) WHERE id = ?",
+export async function deferApproval(id: string): Promise<ApprovalJSON | null> {
+  const { rows } = await pool.query<Approval>(
+    "UPDATE approvals SET status = 'deferred', actioned_at = NOW() WHERE id = $1 RETURNING *",
     [id],
-  ) as ResultSetHeader[];
-
-  if (!result.affectedRows) return null;
-  return getApprovalById(id);
+  );
+  return rows.length ? toJSON(rows[0]) : null;
 }
 
 // ── SCHEMA BOOTSTRAP ──────────────────────────────────────────────────
 export async function createApprovalsTable(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS approvals (
-      id            VARCHAR(36)   NOT NULL PRIMARY KEY,
-      site_id       INT           NOT NULL,
+      id            UUID          NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
+      site_id       INTEGER       NOT NULL,
       module        VARCHAR(64)   NOT NULL,
       type          VARCHAR(64)   NOT NULL,
-      priority      TINYINT       NOT NULL DEFAULT 3,
+      priority      SMALLINT      NOT NULL DEFAULT 3,
       title         VARCHAR(255)  NOT NULL,
-      content       JSON          NOT NULL,
-      preview_url   VARCHAR(512)  NULL,
+      content       JSONB         NOT NULL DEFAULT '{}',
+      preview_url   VARCHAR(512),
       status        VARCHAR(16)   NOT NULL DEFAULT 'pending',
-      created_at    DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      actioned_at   DATETIME(3)   NULL,
-      actioned_by   VARCHAR(64)   NULL,
-      reject_reason VARCHAR(255)  NULL,
-      INDEX idx_status_priority (status, priority),
-      INDEX idx_site_id (site_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+      actioned_at   TIMESTAMPTZ,
+      actioned_by   VARCHAR(64),
+      reject_reason VARCHAR(255)
+    );
+    CREATE INDEX IF NOT EXISTS idx_approvals_status_priority ON approvals (status, priority);
+    CREATE INDEX IF NOT EXISTS idx_approvals_site_id ON approvals (site_id);
   `);
 }

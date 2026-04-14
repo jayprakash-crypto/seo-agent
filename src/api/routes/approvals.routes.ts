@@ -16,7 +16,16 @@ import {
   deferApproval,
 } from "../controllers/approvals.controller.js";
 
-import type { Approval } from "../controllers/approvals.controller.js";
+// Request body shape for POST /approvals (all strings from JSON body)
+interface CreateApprovalBody {
+  site_id?: number;
+  module?: string;
+  type?: string;
+  priority?: number;
+  title?: string;
+  content?: Record<string, unknown>;
+  preview_url?: string;
+}
 
 export function approvalsRouter(io: SocketIOServer): Router {
   const router = Router();
@@ -24,7 +33,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
   // POST /approvals
   router.post("/", async (req: Request, res: Response) => {
     const { site_id, module, type, priority = 3, title, content, preview_url } =
-      req.body as Partial<Approval>;
+      req.body as CreateApprovalBody;
 
     if (!site_id || !module || !type || !title || !content) {
       res.status(400).json({
@@ -33,21 +42,17 @@ export function approvalsRouter(io: SocketIOServer): Router {
       return;
     }
 
-    const approval: Approval = {
-      id: randomUUID(),
-      site_id: Number(site_id),
-      module: String(module),
-      type: String(type),
-      priority: Number(priority),
-      title: String(title),
-      content: content as Record<string, unknown>,
-      preview_url: preview_url ? String(preview_url) : undefined,
-      status: "pending",
-      created_at: new Date().toISOString(),
-    };
-
     try {
-      await createApproval(approval);
+      const approval = await createApproval({
+        id: randomUUID(),
+        site_id: Number(site_id),
+        module: String(module),
+        type: String(type),
+        priority: Number(priority),
+        title: String(title),
+        content: content as Record<string, unknown>,
+        preview_url: preview_url ? String(preview_url) : null,
+      });
       io.emit("approval:created", approval);
       res.status(201).json(approval);
     } catch (err) {
