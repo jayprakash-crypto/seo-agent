@@ -63,12 +63,14 @@ export function approvalsRouter(io: SocketIOServer): Router {
 
   // GET /approvals
   router.get("/", async (req: Request, res: Response) => {
-    const { status, sort, site_id } = req.query as Record<string, string>;
+    const { status, sort, site_id, limit, offset } = req.query as Record<string, string>;
     try {
       const result = await listApprovals({
         status,
         site_id: site_id ? Number(site_id) : undefined,
         sort,
+        limit:  limit  ? Number(limit)  : undefined,
+        offset: offset ? Number(offset) : undefined,
       });
       res.json(result);
     } catch (err) {

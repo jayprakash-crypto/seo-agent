@@ -86,14 +86,14 @@ function EditApproveDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Edit &amp; Approve</DialogTitle>
           <p className="text-sm text-muted-foreground">{approval.title}</p>
         </DialogHeader>
 
         <Textarea
-          className="h-72 font-mono text-xs"
+          className="h-80 font-mono text-xs"
           value={editedContent}
           onChange={(e) => {
             setEditedContent(e.target.value);

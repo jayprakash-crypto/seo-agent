@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import ApprovalQueue from "@/components/ApprovalQueue";
+import AllApprovals from "@/components/AllApprovals";
 import AlertFeed from "@/components/AlertFeed";
 import SiteOverview from "@/components/SiteOverview";
 import ConfigManager from "@/components/ConfigManager";
@@ -73,6 +74,10 @@ export default function DashboardPage() {
               </p>
             </div>
             <ApprovalQueue onCountChange={setPendingCount} />
+            
+            <Separator className="my-10" />
+
+            <AllApprovals />
           </TabsContent>
 
           <TabsContent value="alerts">

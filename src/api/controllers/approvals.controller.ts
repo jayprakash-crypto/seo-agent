@@ -102,7 +102,9 @@ export async function listApprovals(filters: {
   status?: string;
   site_id?: number;
   sort?: string;
-}): Promise<{ approvals: ApprovalJSON[]; total: number }> {
+  limit?: number;
+  offset?: number;
+}): Promise<{ approvals: ApprovalJSON[]; total: number; limit: number; offset: number }> {
   const conditions: string[] = [];
   const params: unknown[] = [];
   let i = 1;
@@ -115,12 +117,20 @@ export async function listApprovals(filters: {
     ? "ORDER BY priority ASC"
     : "ORDER BY created_at DESC";
 
-  const { rows } = await pool.query<Approval>(
-    `SELECT * FROM approvals ${where} ${order}`,
-    params,
-  );
-  const approvals = rows.map(toJSON);
-  return { approvals, total: approvals.length };
+  const limit  = Math.min(filters.limit  ?? 10, 100);
+  const offset = filters.offset ?? 0;
+
+  const [countResult, rowsResult] = await Promise.all([
+    pool.query<{ count: string }>(`SELECT COUNT(*) FROM approvals ${where}`, params),
+    pool.query<Approval>(
+      `SELECT * FROM approvals ${where} ${order} LIMIT $${i} OFFSET $${i + 1}`,
+      [...params, limit, offset],
+    ),
+  ]);
+
+  const total    = Number(countResult.rows[0].count);
+  const approvals = rowsResult.rows.map(toJSON);
+  return { approvals, total, limit, offset };
 }
 
 // ── GET BY ID ─────────────────────────────────────────────────────────
