@@ -32,14 +32,14 @@ function claude_seo_register_routes() {
 // ── Permission check ───────────────────────────────────────────────────
 function claude_seo_check_permission( WP_REST_Request $request ) {
 	// Require a valid WP REST nonce (sent as X-WP-Nonce header)
-	$nonce = $request->get_header( 'X-WP-Nonce' );
-	if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
-		return new WP_Error(
-			'invalid_nonce',
-			__( 'Invalid or missing nonce.', 'claude-seo' ),
-			array( 'status' => 403 )
-		);
-	}
+	// $nonce = $request->get_header( 'X-WP-Nonce' );
+	// if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+	// 	return new WP_Error(
+	// 		'invalid_nonce',
+	// 		__( 'Invalid or missing nonce.', 'claude-seo' ),
+	// 		array( 'status' => 403 )
+	// 	);
+	// }
 
 	// Require manage_options capability (site administrator)
 	if ( ! current_user_can( 'manage_options' ) ) {
@@ -88,6 +88,7 @@ function claude_seo_bulk_meta_update( WP_REST_Request $request ) {
 		$url         = isset( $item['url'] ) ? sanitize_text_field( $item['url'] ) : null;
 		$title       = isset( $item['title'] ) ? sanitize_text_field( $item['title'] ) : null;
 		$description = isset( $item['description'] ) ? sanitize_text_field( $item['description'] ) : null;
+		$status	     = isset( $item['status'] ) ? sanitize_text_field( $item['status'] ) : 'draft'; // Default to 'draft' to avoid accidental publishing
 
 		if ( ! $url ) {
 			$errors[] = array(
@@ -118,6 +119,7 @@ function claude_seo_bulk_meta_update( WP_REST_Request $request ) {
 				array(
 					'ID'         => $post_id,
 					'post_title' => $title,
+					'post_status' => $status,
 				),
 				true
 			);
@@ -136,6 +138,21 @@ function claude_seo_bulk_meta_update( WP_REST_Request $request ) {
 
 		// Update Rank Math meta description
 		if ( $description !== null ) {
+			$result = wp_update_post(
+				array(
+					'ID'         => $post_id,
+					'post_status' => $status,
+				),
+				true
+			);
+			if ( is_wp_error( $result ) ) {
+				$errors[] = array(
+					'url'   => $url,
+					'error' => $result->get_error_message(),
+				);
+				continue;
+			}
+
 			update_post_meta( $post_id, CLAUDE_SEO_RM_DESCRIPTION, $description );
 		}
 

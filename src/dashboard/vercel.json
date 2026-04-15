@@ -1,0 +1,14 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npx prisma generate && next build",
+  "devCommand": "next dev",
+  "installCommand": "npm install",
+  "env": {
+    "NEXTAUTH_URL": "@nextauth_url",
+    "NEXTAUTH_SECRET": "@nextauth_secret",
+    "DASHBOARD_PASSWORD": "@dashboard_password",
+    "TOTP_SECRET": "@totp_secret",
+    "APPROVALS_API_URL": "@approvals_api_url",
+    "DATABASE_URL": "@database_url"
+  }
+}
