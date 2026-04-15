@@ -15,6 +15,7 @@
 
 // ── PostgreSQL ────────────────────────────────────────────────────────
 import pool from "../db.js";
+import { updatePageMeta } from "../services/wordpress.service.js";
 
 // ── Types (PostgreSQL-aligned) ────────────────────────────────────────
 // id          → UUID  (pg returns as string)
@@ -151,7 +152,45 @@ export async function approveApproval(
     `UPDATE approvals SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
     params,
   );
-  return rows.length ? toJSON(rows[0]) : null;
+
+  if (!rows.length) return null;
+
+  const approval = toJSON(rows[0]);
+
+  // If the approved item is a meta_rewrite, push the change to WordPress.
+  // content.url, content.suggested_title, content.suggested_description
+  // are set by the cms-connector when it creates the approval.
+  if (approval.type === "meta_rewrite") {
+    const c = approval.content as {
+      url?: string;
+      suggested_title?: string;
+      suggested_description?: string;
+    };
+
+    if (c.url && c.suggested_title && c.suggested_description) {
+      const wpResult = await updatePageMeta(
+        approval.site_id,
+        c.url,
+        c.suggested_title,
+        c.suggested_description,
+      );
+
+      if (!wpResult.ok) {
+        // Log the failure but don't roll back the DB approval —
+        // the operator can retry via the CMS connector manually.
+        console.error(
+          `[approveApproval] WordPress update failed for approval ${id}:`,
+          wpResult.error,
+        );
+      } else {
+        console.log(
+          `[approveApproval] WordPress meta updated for ${c.url} (approval ${id})`,
+        );
+      }
+    }
+  }
+
+  return approval;
 }
 
 // ── REJECT ────────────────────────────────────────────────────────────

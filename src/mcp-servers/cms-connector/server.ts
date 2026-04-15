@@ -290,43 +290,118 @@ export async function updatePageMeta(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _extraFields?: Record<string, any>,
 ) {
-  // Build update payload — intentionally never includes 'status'
-  // Rank Math stores meta description in 'rank_math_description' post meta.
-  const payload: Record<string, unknown> = {
-    title,
-    meta: { rank_math_description: description },
-  };
-
-  // Merge extra fields (used in tests to verify the publish guard)
-  if (_extraFields) Object.assign(payload, _extraFields);
-
   // ── PERMANENT PUBLISH GUARD ───────────────────────────────────────
   // update_page_meta MUST NEVER set post_status to 'publish'.
-  // This guard is a hard stop regardless of how the function is called.
-  if (payload.status === "publish" || payload.post_status === "publish") {
+  if (_extraFields?.status === "publish" || _extraFields?.post_status === "publish") {
     throw new Error(
       "PUBLISH GUARD: update_page_meta must never set post_status to 'publish'",
     );
   }
   // ─────────────────────────────────────────────────────────────────
 
-  // Resolve page ID by URL
-  const page = await getPage(siteId, pageUrl);
+  // Use the claude-seo plugin endpoint instead of the standard WP REST API.
+  // Reason: Rank Math registers 'rank_math_title' and 'rank_math_description'
+  // as a read-only custom REST field ('rank_math_meta') — they are NOT exposed
+  // as writable entries under 'meta'. Sending them via PUT /pages/:id is
+  // silently ignored. The plugin calls update_post_meta() directly, which is
+  // the only reliable write path for Rank Math fields.
+  const { baseUrl, authHeader } = getWpAuth(siteId);
 
-  // PUT to WP REST API
-  const updated = (await wpFetch(
-    siteId,
-    "PUT",
-    `/pages/${page.id}`,
-    payload,
-  )) as { id: number; link: string; title: { rendered: string } };
+  // Replace /wp/v2 suffix with the plugin namespace if present
+  const pluginBase = baseUrl.replace(/\/wp\/v2\/?$/, "");
+  const pluginUrl = `${pluginBase}/claude-seo/v1/bulk-meta-update`;
+
+  const res = await fetch(pluginUrl, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify([{ url: pageUrl, title, description, status: "draft" }]),
+  });
+
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text();
+    throw new Error(
+      `claude-seo plugin returned non-JSON (${res.status}). Body: ${text.slice(0, 200)}`,
+    );
+  }
+
+  const data = (await res.json()) as { updated: number; errors: { url: string; error: string }[] };
+
+  if (!res.ok || data.errors?.length) {
+    const errMsg = data.errors?.[0]?.error ?? res.statusText;
+    throw new Error(`claude-seo plugin error: ${errMsg}`);
+  }
 
   return {
     ok: true,
-    id: updated.id,
-    url: updated.link,
-    title: updated.title.rendered,
+    url: pageUrl,
+    title,
+    description,
+    updated: data.updated,
   };
+}
+
+// ── Tool: create_approval_queue ───────────────────────────────────────
+export interface ApprovalQueueItem {
+  site_id: number;
+  module: string;
+  type: string;
+  priority?: number; // 1=critical, 2=high, 3=medium (default 3)
+  title: string;
+  content: Record<string, unknown>;
+  preview_url?: string;
+}
+
+export async function createApprovalQueue(
+  items: ApprovalQueueItem[],
+): Promise<{ queued: number; results: unknown[]; errors: { index: number; error: string }[] }> {
+  const apiUrl = process.env.BACKEND_API_URL ?? "http://localhost:3002";
+  const url = `${apiUrl}/approvals`;
+
+  const results: unknown[] = [];
+  const errors: { index: number; error: string }[] = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          site_id: item.site_id,
+          module: item.module,
+          type: item.type,
+          priority: item.priority ?? 3,
+          title: item.title,
+          content: item.content,
+          preview_url: item.preview_url ?? null,
+        }),
+      });
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`non-JSON response (${res.status}): ${text.slice(0, 200)}`);
+      }
+
+      const data = await res.json();
+      if (!res.ok) {
+        const errMsg = (data as { error?: string }).error ?? res.statusText;
+        throw new Error(`HTTP ${res.status}: ${errMsg}`);
+      }
+
+      results.push(data);
+      console.log(`[create_approval_queue] queued item ${i + 1}/${items.length}: ${item.title}`);
+    } catch (err) {
+      errors.push({ index: i, error: String(err) });
+      console.error(`[create_approval_queue] item ${i + 1} failed:`, err);
+    }
+  }
+
+  return { queued: results.length, results, errors };
 }
 
 // ── Tool: get_impressions_vs_ctr ──────────────────────────────────────
@@ -459,6 +534,34 @@ function createMcpServer(): Server {
           required: ["site_id", "days"],
         },
       },
+      {
+        name: "create_approval_queue",
+        description:
+          "Submit a list of items to the operator approval queue. Processes each item sequentially. Use when suggested changes require human review before publishing.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              description: "List of approval items to queue",
+              items: {
+                type: "object",
+                properties: {
+                  site_id: { type: "number", description: "Site ID" },
+                  module: { type: "string", description: "Module that generated the item, e.g. 'cms-connector'" },
+                  type: { type: "string", description: "Item type, e.g. 'meta_rewrite', 'gbp_post', 'review_response'" },
+                  priority: { type: "number", description: "Priority: 1=critical, 2=high, 3=medium (default 3)" },
+                  title: { type: "string", description: "Short human-readable title shown in the approval queue" },
+                  content: { type: "object", description: "Full payload — structure varies by type" },
+                  preview_url: { type: "string", description: "Optional URL to preview the page being changed" },
+                },
+                required: ["site_id", "module", "type", "title", "content"],
+              },
+            },
+          },
+          required: ["items"],
+        },
+      },
     ],
   }));
 
@@ -513,6 +616,15 @@ function createMcpServer(): Server {
             Number(args.site_id),
             Number(args.days),
           );
+          return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        }
+        case "create_approval_queue": {
+          console.log("========== CREATE APPROVAL QUEUE ==========");
+          const items = args.items as ApprovalQueueItem[];
+          if (!Array.isArray(items) || items.length === 0) {
+            throw new Error("create_approval_queue requires a non-empty 'items' array");
+          }
+          const result = await createApprovalQueue(items);
           return { content: [{ type: "text", text: JSON.stringify(result) }] };
         }
         default:

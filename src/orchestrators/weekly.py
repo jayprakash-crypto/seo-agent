@@ -93,12 +93,6 @@ def step2_cms_connector(client: anthropic.Anthropic, site_id: int) -> dict:
     """Find low-CTR pages and suggest meta improvements via cms-connector MCP."""
     print(f"\n[step2] Analyzing low-CTR pages for site_id={site_id}...")
 
-    dry_run_note = (
-        "\nIMPORTANT: DRY_RUN mode is active. Suggest meta improvements but do NOT call update_page_meta."
-        # if DRY_RUN else
-        # "\nFor each page, call update_page_meta with the improved title and description."
-    )
-
     response = call_with_retry(
         client,
         "step2",
@@ -113,10 +107,33 @@ Call in order:
 1. get_impressions_vs_ctr with site_id={site_id} and days=28
 2. From the results, take the top 5 pages by impressions (highest impression count first)
 3. For each of those 5 pages, call get_page with site_id={site_id} and the page URL
-4. Suggest improved title and meta description for each page to increase CTR{dry_run_note}
+4. For each page, write an improved title (max 60 chars) and meta description (max 155 chars) to increase CTR
+5. Call create_approval_queue ONCE with all 5 pages as a single items list:
+   {{
+     "items": [
+       {{
+         "site_id": {site_id},
+         "module": "cms-connector",
+         "type": "meta_rewrite",
+         "priority": 2,
+         "title": "Update meta: <current page title>",
+         "content": {{
+           "url": "<page url>",
+           "current_title": "<current title>",
+           "current_description": "<current meta description>",
+           "suggested_title": "<your improved title>",
+           "suggested_description": "<your improved description>",
+           "reasoning": "<1-2 sentence explanation>"
+         }},
+         "preview_url": "<page url>"
+       }},
+       ... (one object per page)
+     ]
+   }}
 
 Return ONLY a JSON object with keys:
 - opportunities: array of objects with url, current_ctr, impressions, current_title, current_description, suggested_title, suggested_description, reasoning
+- queued: number of items successfully submitted to the approval queue
 - summary: string with 2-3 overall action items
 
 No extra text.""",
@@ -126,10 +143,6 @@ No extra text.""",
 
     text = "".join(block.text for block in response.content if hasattr(block, "text")).strip()
     print(f"[step2] Done. Stop reason: {response.stop_reason}")
-
-    if DRY_RUN:
-        print(f"[step2] DRY_RUN=true — suggestions printed, update_page_meta skipped")
-        print(f"[step2] Suggestions:\n{text[:500]}")
 
     try:
         return json.loads(text)

@@ -4,6 +4,7 @@
  * DB logic → src/api/controllers/
  */
 
+import "dotenv/config";
 import express, { Request, Response } from "express";
 import { createServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";

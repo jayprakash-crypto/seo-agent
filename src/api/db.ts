@@ -16,9 +16,7 @@
 import pg from "pg";
 
 const pool = new pg.Pool({
-  connectionString:
-    process.env.DATABASE_URL ??
-    "postgresql://root:gGDTbivMsC098mLTz4fJQKrrxrrnibB5@dpg-d7es4bernols73encu5g-a.singapore-postgres.render.com/seo_agent_x3vq",
+  connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false,
   },
