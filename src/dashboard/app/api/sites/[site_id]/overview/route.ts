@@ -24,10 +24,10 @@ function getSiteUrl(siteId: string): string {
   return url;
 }
 
-type Params = { params: { site_id: string } };
+type Params = { params: Promise<{ site_id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
-  const { site_id } = params;
+  const { site_id } = await params;
   const API = process.env.APPROVALS_API_URL ?? "http://localhost:3002";
 
   // Fetch open alerts count
