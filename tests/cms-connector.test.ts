@@ -66,6 +66,7 @@ let listPages: CmsModule['listPages'];
 let getPageMetrics: CmsModule['getPageMetrics'];
 let updatePageMeta: CmsModule['updatePageMeta'];
 let getImpressionsVsCtr: CmsModule['getImpressionsVsCtr'];
+let createApprovalQueue: CmsModule['createApprovalQueue'];
 
 beforeAll(async () => {
   // Install global fetch mock before the module is imported
@@ -76,6 +77,7 @@ beforeAll(async () => {
   getPageMetrics = mod.getPageMetrics;
   updatePageMeta = mod.updatePageMeta;
   getImpressionsVsCtr = mod.getImpressionsVsCtr;
+  createApprovalQueue = mod.createApprovalQueue;
 });
 
 // ── Env helpers ───────────────────────────────────────────────────────
@@ -109,6 +111,7 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
     ok,
     status,
     statusText: ok ? 'OK' : 'Bad Request',
+    headers: { get: (key: string) => key === 'content-type' ? 'application/json' : null } as unknown as Headers,
     json: async () => body,
     text: async () => JSON.stringify(body),
   } as unknown as Response;
@@ -307,17 +310,9 @@ describe('updatePageMeta', () => {
   });
   afterEach(() => clearWpEnv(1));
 
-  const UPDATED_PAGE = {
-    id: 42,
-    link: 'https://lifecircle.in/home-care/',
-    title: { rendered: 'Updated Home Care Services' },
-  };
-
-  /** Queue: pages?slug= → WP_PAGE, PUT → UPDATED_PAGE */
+  /** Mock the claude-seo plugin POST returning a successful update */
   function setupUpdateFetch() {
-    mockFetch
-      .mockResolvedValueOnce(jsonResponse([WP_PAGE]))
-      .mockResolvedValueOnce(jsonResponse(UPDATED_PAGE));
+    mockFetch.mockResolvedValueOnce(jsonResponse({ updated: 1, errors: [] }));
   }
 
   it('updates title and description, returns ok=true', async () => {
@@ -329,34 +324,35 @@ describe('updatePageMeta', () => {
       'Award-winning home care.',
     );
     expect(result.ok).toBe(true);
-    expect(result.id).toBe(42);
+    expect(result.url).toBe('https://lifecircle.in/home-care/');
     expect(result.title).toBe('Updated Home Care Services');
+    expect(result.updated).toBe(1);
   });
 
-  it('sends PUT with title and meta description in payload', async () => {
+  it('sends POST to claude-seo plugin with url, title, description', async () => {
     setupUpdateFetch();
     await updatePageMeta(1, 'https://lifecircle.in/home-care/', 'New Title', 'New desc');
-    // 3rd fetch call (index 2) is the PUT
-    const putCall = mockFetch.mock.calls[1] as [string, RequestInit];
-    const body = JSON.parse(putCall[1].body as string);
-    expect(body.title).toBe('New Title');
-    expect(body.meta.rank_math_description).toBe('New desc');
+    const [, fetchInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(fetchInit.body as string) as Array<Record<string, unknown>>;
+    expect(body[0].title).toBe('New Title');
+    expect(body[0].description).toBe('New desc');
+    expect(body[0].url).toBe('https://lifecircle.in/home-care/');
   });
 
-  it('PUT URL includes the resolved page ID', async () => {
+  it('POST URL points to claude-seo plugin endpoint', async () => {
     setupUpdateFetch();
     await updatePageMeta(1, 'https://lifecircle.in/home-care/', 'T', 'D');
-    const putCall = mockFetch.mock.calls[1] as [string, RequestInit];
-    expect(putCall[0]).toContain('/pages/42');
+    const [fetchUrl] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(fetchUrl).toContain('claude-seo/v1/bulk-meta-update');
   });
 
-  it('payload does NOT contain status field', async () => {
+  it('payload sets status to draft (never publish)', async () => {
     setupUpdateFetch();
     await updatePageMeta(1, 'https://lifecircle.in/home-care/', 'T', 'D');
-    const putCall = mockFetch.mock.calls[1] as [string, RequestInit];
-    const body = JSON.parse(putCall[1].body as string);
-    expect(body).not.toHaveProperty('status');
-    expect(body).not.toHaveProperty('post_status');
+    const [, fetchInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(fetchInit.body as string) as Array<Record<string, unknown>>;
+    expect(body[0].status).toBe('draft');
+    expect(body[0].status).not.toBe('publish');
   });
 
   // ── PUBLISH GUARD ──────────────────────────────────────────────────
@@ -387,13 +383,22 @@ describe('updatePageMeta', () => {
     ).rejects.toThrow('Missing env var CMS_API_URL_SITE_1');
   });
 
-  it('propagates WP API errors', async () => {
-    mockFetch
-      .mockResolvedValueOnce(jsonResponse([WP_PAGE]))
-      .mockResolvedValueOnce(jsonResponse({ message: 'Forbidden' }, false, 403));
+  it('throws when plugin returns errors in response body', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ updated: 0, errors: [{ url: 'https://lifecircle.in/home-care/', error: 'update_failed' }] }),
+    );
     await expect(
       updatePageMeta(1, 'https://lifecircle.in/home-care/', 'T', 'D'),
-    ).rejects.toThrow('WP API error 403: Forbidden');
+    ).rejects.toThrow('claude-seo plugin error: update_failed');
+  });
+
+  it('throws when plugin returns non-ok HTTP status', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ updated: 0, errors: [{ url: 'https://lifecircle.in/home-care/', error: 'Forbidden' }] }, false, 403),
+    );
+    await expect(
+      updatePageMeta(1, 'https://lifecircle.in/home-care/', 'T', 'D'),
+    ).rejects.toThrow('claude-seo plugin error: Forbidden');
   });
 });
 
@@ -472,5 +477,143 @@ describe('getImpressionsVsCtr', () => {
   it('propagates GSC API errors', async () => {
     mockQuery.mockRejectedValueOnce(new Error('RESOURCE_EXHAUSTED'));
     await expect(getImpressionsVsCtr(1, 28)).rejects.toThrow('RESOURCE_EXHAUSTED');
+  });
+});
+
+// ── createApprovalQueue ───────────────────────────────────────────────
+describe('createApprovalQueue', () => {
+  const BACKEND_URL = 'http://localhost:3002';
+
+  const ITEM_A = {
+    site_id: 1,
+    module: 'cms-connector',
+    type: 'meta_rewrite',
+    priority: 2,
+    title: 'Update Home Care meta',
+    content: { url: 'https://lifecircle.in/home-care/', suggested_title: 'T', suggested_description: 'D' },
+  };
+
+  const ITEM_B = {
+    site_id: 1,
+    module: 'cms-connector',
+    type: 'meta_rewrite',
+    title: 'Update About meta',
+    content: { url: 'https://lifecircle.in/about/', suggested_title: 'T2', suggested_description: 'D2' },
+  };
+
+  const CREATED_APPROVAL = { id: 'uuid-1', status: 'pending', title: ITEM_A.title };
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    process.env.BACKEND_API_URL = BACKEND_URL;
+  });
+
+  afterEach(() => {
+    delete process.env.BACKEND_API_URL;
+  });
+
+  it('queues a single item and returns queued=1', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(CREATED_APPROVAL));
+    const result = await createApprovalQueue([ITEM_A]);
+    expect(result.queued).toBe(1);
+    expect(result.results).toHaveLength(1);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('queues multiple items sequentially', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ id: 'uuid-1', status: 'pending' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'uuid-2', status: 'pending' }));
+    const result = await createApprovalQueue([ITEM_A, ITEM_B]);
+    expect(result.queued).toBe(2);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('POSTs to BACKEND_API_URL/approvals', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(CREATED_APPROVAL));
+    await createApprovalQueue([ITEM_A]);
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BACKEND_URL}/approvals`);
+  });
+
+  it('falls back to localhost:3002 when BACKEND_API_URL is not set', async () => {
+    delete process.env.BACKEND_API_URL;
+    mockFetch.mockResolvedValueOnce(jsonResponse(CREATED_APPROVAL));
+    await createApprovalQueue([ITEM_A]);
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3002/approvals');
+  });
+
+  it('sends correct fields in POST body', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(CREATED_APPROVAL));
+    await createApprovalQueue([ITEM_A]);
+    const [, fetchInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(fetchInit.body as string) as Record<string, unknown>;
+    expect(body.site_id).toBe(ITEM_A.site_id);
+    expect(body.module).toBe(ITEM_A.module);
+    expect(body.type).toBe(ITEM_A.type);
+    expect(body.priority).toBe(ITEM_A.priority);
+    expect(body.title).toBe(ITEM_A.title);
+    expect(body.content).toEqual(ITEM_A.content);
+  });
+
+  it('defaults priority to 3 when not provided', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(CREATED_APPROVAL));
+    await createApprovalQueue([ITEM_B]); // ITEM_B has no priority
+    const [, fetchInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(fetchInit.body as string) as Record<string, unknown>;
+    expect(body.priority).toBe(3);
+  });
+
+  it('sends preview_url as null when not provided', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(CREATED_APPROVAL));
+    await createApprovalQueue([ITEM_A]); // no preview_url
+    const [, fetchInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(fetchInit.body as string) as Record<string, unknown>;
+    expect(body.preview_url).toBeNull();
+  });
+
+  it('sends preview_url when provided', async () => {
+    const itemWithPreview = { ...ITEM_A, preview_url: 'https://lifecircle.in/preview/' };
+    mockFetch.mockResolvedValueOnce(jsonResponse(CREATED_APPROVAL));
+    await createApprovalQueue([itemWithPreview]);
+    const [, fetchInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(fetchInit.body as string) as Record<string, unknown>;
+    expect(body.preview_url).toBe('https://lifecircle.in/preview/');
+  });
+
+  it('records error and continues when one item fails', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ error: 'validation failed' }, false, 400))
+      .mockResolvedValueOnce(jsonResponse({ id: 'uuid-2', status: 'pending' }));
+    const result = await createApprovalQueue([ITEM_A, ITEM_B]);
+    expect(result.queued).toBe(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].index).toBe(0);
+    expect(result.errors[0].error).toContain('HTTP 400');
+  });
+
+  it('returns all errors when every item fails', async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ error: 'server error' }, false, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: 'server error' }, false, 500));
+    const result = await createApprovalQueue([ITEM_A, ITEM_B]);
+    expect(result.queued).toBe(0);
+    expect(result.errors).toHaveLength(2);
+  });
+
+  it('returns empty results and no errors for an empty items array', async () => {
+    const result = await createApprovalQueue([]);
+    expect(result.queued).toBe(0);
+    expect(result.results).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('records error when fetch throws (network failure)', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    const result = await createApprovalQueue([ITEM_A]);
+    expect(result.queued).toBe(0);
+    expect(result.errors[0].error).toContain('ECONNREFUSED');
   });
 });

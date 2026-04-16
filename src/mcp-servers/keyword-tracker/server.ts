@@ -350,7 +350,10 @@ function createMcpServer(): Server {
         inputSchema: {
           type: "object",
           properties: {
-            site_id: { type: "number", description: "Site ID from config (1, 2, 3...)" },
+            site_id: {
+              type: "number",
+              description: "Site ID from config (1, 2, 3...)",
+            },
             keywords: {
               type: "array",
               items: { type: "string" },
@@ -367,9 +370,18 @@ function createMcpServer(): Server {
         inputSchema: {
           type: "object",
           properties: {
-            site_id: { type: "number", description: "Site ID from config (1, 2, 3...)" },
-            keyword: { type: "string", description: "The keyword to get history for" },
-            days: { type: "number", description: "Number of days of history to retrieve (1–365)" },
+            site_id: {
+              type: "number",
+              description: "Site ID from config (1, 2, 3...)",
+            },
+            keyword: {
+              type: "string",
+              description: "The keyword to get history for",
+            },
+            days: {
+              type: "number",
+              description: "Number of days of history to retrieve (1–365)",
+            },
           },
           required: ["site_id", "keyword", "days"],
         },
@@ -381,12 +393,20 @@ function createMcpServer(): Server {
         inputSchema: {
           type: "object",
           properties: {
-            site_id: { type: "number", description: "Site ID from config (1, 2, 3...)" },
-            threshold: { type: "number", description: "Minimum position change to include (e.g. 3 = moved 3+ spots)" },
+            site_id: {
+              type: "number",
+              description: "Site ID from config (1, 2, 3...)",
+            },
+            threshold: {
+              type: "number",
+              description:
+                "Minimum position change to include (e.g. 3 = moved 3+ spots)",
+            },
             direction: {
               type: "string",
               enum: ["up", "down", "both"],
-              description: 'Filter by direction: "up" (improved), "down" (declined), or "both"',
+              description:
+                'Filter by direction: "up" (improved), "down" (declined), or "both"',
             },
           },
           required: ["site_id", "threshold", "direction"],
@@ -399,9 +419,16 @@ function createMcpServer(): Server {
         inputSchema: {
           type: "object",
           properties: {
-            site_id: { type: "number", description: "Site ID from config (1, 2, 3...)" },
+            site_id: {
+              type: "number",
+              description: "Site ID from config (1, 2, 3...)",
+            },
             keyword: { type: "string", description: "The keyword to analyse" },
-            window_days: { type: "number", description: "Rolling window size in days for velocity calculation (2–90)" },
+            window_days: {
+              type: "number",
+              description:
+                "Rolling window size in days for velocity calculation (2–90)",
+            },
           },
           required: ["site_id", "keyword", "window_days"],
         },
@@ -417,7 +444,8 @@ function createMcpServer(): Server {
         case "get_rankings": {
           const siteId = validateSiteId(args?.site_id);
           const keywords = args?.keywords as string[];
-          if (!Array.isArray(keywords)) throw new Error("keywords must be an array");
+          if (!Array.isArray(keywords))
+            throw new Error("keywords must be an array");
           console.log("========== GET RANKINGS ==========");
           const result = await getRankings(siteId, keywords);
           return { content: [{ type: "text", text: JSON.stringify(result) }] };
@@ -451,7 +479,9 @@ function createMcpServer(): Server {
       }
     } catch (error) {
       return {
-        content: [{ type: "text", text: JSON.stringify({ error: String(error) }) }],
+        content: [
+          { type: "text", text: JSON.stringify({ error: String(error) }) },
+        ],
         isError: true,
       };
     }
@@ -473,14 +503,27 @@ app.post("/mcp", async (req, res) => {
 
     if (!transport) {
       if (!isInitializeRequest(req.body)) {
-        res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request: expected initialize" }, id: null });
+        res
+          .status(400)
+          .json({
+            jsonrpc: "2.0",
+            error: {
+              code: -32000,
+              message: "Bad Request: expected initialize",
+            },
+            id: null,
+          });
         return;
       }
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (id) => { transports.set(id, transport!); },
+        onsessioninitialized: (id) => {
+          transports.set(id, transport!);
+        },
       });
-      transport.onclose = () => { if (transport!.sessionId) transports.delete(transport!.sessionId); };
+      transport.onclose = () => {
+        if (transport!.sessionId) transports.delete(transport!.sessionId);
+      };
       await createMcpServer().connect(transport);
     }
 
@@ -488,27 +531,35 @@ app.post("/mcp", async (req, res) => {
   } catch (err) {
     console.error("[mcp] request error:", err);
     if (!res.headersSent) {
-      res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "Internal server error" }, id: null });
+      res
+        .status(500)
+        .json({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal server error" },
+          id: null,
+        });
     }
   }
 });
 
-app.get("/mcp", (_req, res) => res.status(405).set("Allow", "POST").send("Method Not Allowed"));
+app.get("/mcp", (_req, res) =>
+  res.status(405).set("Allow", "POST").send("Method Not Allowed"),
+);
 
 app.delete("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
   if (sessionId) {
     const t = transports.get(sessionId);
-    if (t) { await t.close(); transports.delete(sessionId); }
+    if (t) {
+      await t.close();
+      transports.delete(sessionId);
+    }
   }
   res.status(200).send("OK");
 });
 
 app.get("/health", (_req, res) =>
-  res.json({ status: "ok", server: SERVER_NAME }),
+  res.json({ status: "ok", server: SERVER_NAME, transports: transports }),
 );
 
-const PORT = process.env.PORT || 3000;
-if (process.env.NODE_ENV !== "test") {
-  app.listen(PORT, () => console.log(`${SERVER_NAME} running on port ${PORT}`));
-}
+export default app;

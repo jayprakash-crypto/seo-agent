@@ -66,5 +66,4 @@ app.post('/messages', async (req, res) => {
 
 app.get('/health', (req, res) => res.json({ status: 'ok', server: SERVER_NAME }));
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`${SERVER_NAME} running on port ${PORT}`));
+export default app;

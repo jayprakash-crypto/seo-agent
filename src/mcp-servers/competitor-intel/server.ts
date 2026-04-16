@@ -573,10 +573,7 @@ app.delete("/mcp", async (req, res) => {
 });
 
 app.get("/health", (_req, res) =>
-  res.json({ status: "ok", server: SERVER_NAME }),
+  res.json({ status: "ok", server: SERVER_NAME, transports: transports }),
 );
 
-const PORT = process.env.PORT || 3000;
-if (process.env.NODE_ENV !== "test") {
-  app.listen(PORT, () => console.log(`${SERVER_NAME} running on port ${PORT}`));
-}
+export default app;

@@ -4,28 +4,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// ── MySQL (commented out) ──────────────────────────────────────────────
-// datasource db {
-//   provider = "mysql"
-//   url      = env("DATABASE_URL")
-// }
-// MySQL type notes:
-//   - Json       → JSON column (no binary indexing)
-//   - String @id → VARCHAR(191) by default
-//   - DateTime   → DATETIME(3)
-//   - detail String → VARCHAR(191) — TEXT requires @db.Text annotation
-
-// ── PostgreSQL ─────────────────────────────────────────────────────────
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
-
-// PostgreSQL type notes:
-//   - Json       → JSONB (binary JSON, indexable)
-//   - String @id → TEXT
-//   - DateTime   → TIMESTAMP(3) — add @db.Timestamptz for timezone-aware
-//   - detail String @db.Text → TEXT (unlimited length)
 
 model Approval {
   id            String    @id @default(cuid())
@@ -34,11 +16,11 @@ model Approval {
   type          String    @db.VarChar(64)   // 'gbp_post', 'review_response', 'meta_rewrite'
   priority      Int                         // 1=critical, 2=high, 3=medium
   title         String    @db.VarChar(255)
-  content       Json                        // JSONB in PostgreSQL — full draft content
+  content       Json                        // JSON column
   preview_url   String?   @db.VarChar(512)
   status        String    @default("pending") @db.VarChar(16) // pending | approved | rejected | deferred
-  created_at    DateTime  @default(now()) @db.Timestamptz
-  actioned_at   DateTime? @db.Timestamptz
+  created_at    DateTime  @default(now())
+  actioned_at   DateTime?
   actioned_by   String?   @db.VarChar(64)
   reject_reason String?   @db.VarChar(255)
 
@@ -54,10 +36,10 @@ model Alert {
   module      String    @db.VarChar(64)
   severity    String    @db.VarChar(16)  // 'critical' | 'warning' | 'info'
   title       String    @db.VarChar(255)
-  detail      String    @db.Text         // unlimited length — TEXT in PostgreSQL
+  detail      String    @db.Text         // TEXT column
   status      String    @default("open") @db.VarChar(16) // open | acknowledged | resolved
-  created_at  DateTime  @default(now()) @db.Timestamptz
-  resolved_at DateTime? @db.Timestamptz
+  created_at  DateTime  @default(now())
+  resolved_at DateTime?
 
   @@index([status, severity])
   @@index([site_id])
@@ -69,7 +51,7 @@ model ActionLog {
   action      String    @db.VarChar(32)  // 'approved' | 'rejected' | 'edited' | 'deferred'
   module      String    @db.VarChar(64)
   time_spent  Int                        // seconds spent reviewing
-  created_at  DateTime  @default(now()) @db.Timestamptz
+  created_at  DateTime  @default(now())
 
   approval    Approval? @relation(fields: [approval_id], references: [id])
 }
@@ -77,10 +59,10 @@ model ActionLog {
 model WeeklyDigest {
   id          String   @id @default(cuid())
   site_id     Int
-  week_start  DateTime @db.Timestamptz
-  content     Json                       // JSONB — full Claude digest output
-  top_actions Json                       // JSONB — array of top 3 actions
-  created_at  DateTime @default(now()) @db.Timestamptz
+  week_start  DateTime
+  content     Json                       // JSON — full Claude digest output
+  top_actions Json                       // JSON — array of top 3 actions
+  created_at  DateTime @default(now())
 
   @@index([site_id, week_start])
 }

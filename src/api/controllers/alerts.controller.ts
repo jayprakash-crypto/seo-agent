@@ -1,38 +1,22 @@
 /**
- * Alerts controller — all PostgreSQL query operations for the alerts table.
- * Routes in approvals.ts call these functions; no HTTP objects here.
+ * Alerts controller — all MySQL query operations for the alerts table.
+ * Routes in alerts.routes.ts call these functions; no HTTP objects here.
  */
 
-// ── MySQL (commented out) ─────────────────────────────────────────────
-// import { ResultSetHeader } from "mysql2/promise";
-// MySQL schema used:
-//   id          VARCHAR(36)   PRIMARY KEY
-//   severity    VARCHAR(16)
-//   status      VARCHAR(16)   DEFAULT 'open'
-//   created_at  DATETIME(3)   DEFAULT CURRENT_TIMESTAMP(3)
-//   resolved_at DATETIME(3)
-// MySQL used ? placeholders, [rows] destructure, result.affectedRows
-
-// ── PostgreSQL ────────────────────────────────────────────────────────
+import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import pool from "../db.js";
 
-// ── Types (PostgreSQL-aligned) ────────────────────────────────────────
-// id          → UUID        (pg returns as string)
-// severity    → VARCHAR(16) constrained to critical | warning | info
-// status      → VARCHAR(16) constrained to open | acknowledged | resolved
-// created_at  → TIMESTAMPTZ (pg returns as Date)
-// resolved_at → TIMESTAMPTZ | null
-
-export interface Alert {
-  id: string;                              // UUID
-  site_id: number;                         // INTEGER
-  module: string;                          // VARCHAR(64)
-  severity: "critical" | "warning" | "info"; // VARCHAR(16)
-  title: string;                           // VARCHAR(255)
-  detail: string;                          // TEXT
+// ── Types ─────────────────────────────────────────────────────────────
+export interface Alert extends RowDataPacket {
+  id: string;                                  // VARCHAR(36) UUID
+  site_id: number;                             // INT
+  module: string;                              // VARCHAR(64)
+  severity: "critical" | "warning" | "info";  // VARCHAR(16)
+  title: string;                               // VARCHAR(255)
+  detail: string;                              // TEXT
   status: "open" | "acknowledged" | "resolved"; // VARCHAR(16)
-  created_at: Date;                        // TIMESTAMPTZ
-  resolved_at: Date | null;               // TIMESTAMPTZ | NULL
+  created_at: Date;                            // DATETIME(3)
+  resolved_at: Date | null;                    // DATETIME(3) | NULL
 }
 
 // Serialised form returned over HTTP (dates as ISO strings for JSON)
@@ -49,7 +33,6 @@ export interface AlertJSON {
 }
 
 // ── Row serialiser ────────────────────────────────────────────────────
-// pg returns TIMESTAMPTZ as a JS Date — convert to ISO string for HTTP.
 function toJSON(row: Alert): AlertJSON {
   return {
     ...row,
@@ -68,14 +51,14 @@ function toJSON(row: Alert): AlertJSON {
 export async function createAlert(
   data: Pick<Alert, "id" | "site_id" | "module" | "severity" | "title" | "detail">,
 ): Promise<AlertJSON> {
-  const { rows } = await pool.query<Alert>(
+  await pool.query<ResultSetHeader>(
     `INSERT INTO alerts
        (id, site_id, module, severity, title, detail, status, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 'open', NOW())
-     RETURNING *`,
+     VALUES (?, ?, ?, ?, ?, ?, 'open', NOW(3))`,
     [data.id, data.site_id, data.module, data.severity, data.title, data.detail],
   );
-  return toJSON(rows[0]);
+  const alert = await getAlertById(data.id);
+  return alert!;
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────
@@ -86,26 +69,25 @@ export async function listAlerts(filters: {
 }): Promise<{ alerts: AlertJSON[]; total: number }> {
   const conditions: string[] = [];
   const params: unknown[] = [];
-  let i = 1;
 
-  if (filters.status)   { conditions.push(`status = $${i++}`);   params.push(filters.status); }
-  if (filters.severity) { conditions.push(`severity = $${i++}`); params.push(filters.severity); }
-  if (filters.site_id)  { conditions.push(`site_id = $${i++}`);  params.push(filters.site_id); }
+  if (filters.status)   { conditions.push("status = ?");   params.push(filters.status); }
+  if (filters.severity) { conditions.push("severity = ?"); params.push(filters.severity); }
+  if (filters.site_id)  { conditions.push("site_id = ?");  params.push(filters.site_id); }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const { rows } = await pool.query<Alert>(
+  const [rows] = await pool.query<Alert[]>(
     `SELECT * FROM alerts ${where} ORDER BY created_at DESC`,
     params,
   );
-  const alerts = rows.map(toJSON);
+  const alerts = (rows as Alert[]).map(toJSON);
   return { alerts, total: alerts.length };
 }
 
 // ── GET BY ID ─────────────────────────────────────────────────────────
 export async function getAlertById(id: string): Promise<AlertJSON | null> {
-  const { rows } = await pool.query<Alert>(
-    "SELECT * FROM alerts WHERE id = $1",
+  const [rows] = await pool.query<Alert[]>(
+    "SELECT * FROM alerts WHERE id = ?",
     [id],
   );
   return rows.length ? toJSON(rows[0]) : null;
@@ -113,37 +95,39 @@ export async function getAlertById(id: string): Promise<AlertJSON | null> {
 
 // ── ACKNOWLEDGE ───────────────────────────────────────────────────────
 export async function acknowledgeAlert(id: string): Promise<AlertJSON | null> {
-  const { rows } = await pool.query<Alert>(
-    "UPDATE alerts SET status = 'acknowledged' WHERE id = $1 RETURNING *",
+  const [result] = await pool.query<ResultSetHeader>(
+    "UPDATE alerts SET status = 'acknowledged' WHERE id = ?",
     [id],
   );
-  return rows.length ? toJSON(rows[0]) : null;
+  if (result.affectedRows === 0) return null;
+  return getAlertById(id);
 }
 
 // ── RESOLVE ───────────────────────────────────────────────────────────
 export async function resolveAlert(id: string): Promise<AlertJSON | null> {
-  const { rows } = await pool.query<Alert>(
-    "UPDATE alerts SET status = 'resolved', resolved_at = NOW() WHERE id = $1 RETURNING *",
+  const [result] = await pool.query<ResultSetHeader>(
+    "UPDATE alerts SET status = 'resolved', resolved_at = NOW(3) WHERE id = ?",
     [id],
   );
-  return rows.length ? toJSON(rows[0]) : null;
+  if (result.affectedRows === 0) return null;
+  return getAlertById(id);
 }
 
 // ── SCHEMA BOOTSTRAP ──────────────────────────────────────────────────
 export async function createAlertsTable(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS alerts (
-      id          UUID        NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
-      site_id     INTEGER     NOT NULL,
-      module      VARCHAR(64) NOT NULL,
-      severity    VARCHAR(16) NOT NULL,
+      id          VARCHAR(36)  NOT NULL PRIMARY KEY,
+      site_id     INT          NOT NULL,
+      module      VARCHAR(64)  NOT NULL,
+      severity    VARCHAR(16)  NOT NULL,
       title       VARCHAR(255) NOT NULL,
-      detail      TEXT        NOT NULL,
-      status      VARCHAR(16) NOT NULL DEFAULT 'open',
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      resolved_at TIMESTAMPTZ
-    );
-    CREATE INDEX IF NOT EXISTS idx_alerts_status_severity ON alerts (status, severity);
-    CREATE INDEX IF NOT EXISTS idx_alerts_site_id ON alerts (site_id);
+      detail      TEXT         NOT NULL,
+      status      VARCHAR(16)  NOT NULL DEFAULT 'open',
+      created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      resolved_at DATETIME(3)  NULL,
+      INDEX idx_alerts_status_severity (status, severity),
+      INDEX idx_alerts_site_id (site_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
 }

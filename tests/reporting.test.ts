@@ -206,14 +206,16 @@ describe('createWeeklyDigest', () => {
 
   it('includes header block with site_id', () => {
     const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Test');
-    const header = result.blocks.find((b) => b.type === 'header');
+    type Block = { type: string; text?: { text: string } };
+    const header = result.blocks.find((b) => (b as Block).type === 'header') as Block | undefined;
     expect(header).toBeDefined();
-    expect((header as { text: { text: string } }).text.text).toContain('lifecircle.in');
+    expect(header!.text!.text).toContain('lifecircle.in');
   });
 
   it('renders keyword rankings in a section block', () => {
     const result = createWeeklyDigest(1, SAMPLE_RANKINGS, 'Test');
-    const sections = result.blocks.filter((b) => b.type === 'section');
+    type Block = { type: string; text?: { text: string } };
+    const sections = result.blocks.filter((b) => (b as Block).type === 'section') as Block[];
     const rankSection = sections.find((s) =>
       (s as { text: { text: string } }).text.text.includes('home care'),
     );
