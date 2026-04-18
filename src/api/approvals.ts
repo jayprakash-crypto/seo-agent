@@ -22,12 +22,12 @@ const httpServer = createServer(app);
 
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.DASHBOARD_URL ?? "http://localhost:3000",
+    origin: [process.env.DASHBOARD_URL ?? "http://localhost:3003", "http://localhost:3003"],
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors({ origin: process.env.DASHBOARD_URL ?? "http://localhost:3000" }));
+app.use(cors({ origin: [process.env.DASHBOARD_URL ?? "http://localhost:3003", "http://localhost:3003"] }));
 app.use(express.json());
 
 // ── Routes ────────────────────────────────────────────────────────────
