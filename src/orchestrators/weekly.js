@@ -13,6 +13,7 @@ import { getKeywordsGapForCompetitorDomain } from "../mcp-servers/competitor-int
 import { getContentsGapForCompetitorDomain } from "../mcp-servers/competitor-intel/server.js";
 import { getBacklinksForCompetitorDomain } from "../mcp-servers/competitor-intel/server.js";
 import { postMessageToSlack } from "../mcp-servers/reporting/server.js";
+import { writeRecommendationsToSheet } from "../mcp-servers/reporting/server.js";
 
 dotenv.config();
 
@@ -187,26 +188,26 @@ async function step2CmsConnector(client, siteId) {
     return { opportunities: [], summary: text };
   }
 
-  //   await createApprovalQueue(
-  //     parsed.opportunities.map((opp) => {
-  //       return {
-  //         site_id: siteId,
-  //         module: "cms-connector",
-  //         type: "meta_rewrite",
-  //         priority: opp.priority,
-  //         title: opp.current_title,
-  //         content: {
-  //           url: opp.url,
-  //           current_title: opp.current_title,
-  //           current_description: opp.current_description,
-  //           suggested_title: opp.suggested_title,
-  //           suggested_description: opp.suggested_description,
-  //           reasoning: opp.reasoning,
-  //         },
-  //         preview_url: opp.url,
-  //       };
-  //     }),
-  //   );
+  await createApprovalQueue(
+    parsed.opportunities.map((opp) => {
+      return {
+        site_id: siteId,
+        module: "cms-connector",
+        type: "meta_rewrite",
+        priority: opp.priority,
+        title: opp.current_title,
+        content: {
+          url: opp.url,
+          current_title: opp.current_title,
+          current_description: opp.current_description,
+          suggested_title: opp.suggested_title,
+          suggested_description: opp.suggested_description,
+          reasoning: opp.reasoning,
+        },
+        preview_url: opp.url,
+      };
+    }),
+  );
 
   return parsed;
 }
@@ -486,17 +487,17 @@ Return ONLY a JSON object with keys:
 
   const parsed = extractJson(text);
 
-  console.log(parsed);
+  await writeRecommendationsToSheet(siteId, parsed.recommendations);
+
+  await postMessageToSlack(siteId, {
+    rankings: keywords.rankings || [],
+    cmsOpportunities: (cmsData || {}).opportunities || [],
+    schemaGaps: (schemaData || {}).pages || [],
+    competitorsAlerts: competitorData,
+    summary: parsed.summary || "No summary",
+  });
 
   console.log(`[step5] Done. Stop reason: ${response.stop_reason}`);
-
-  //   await postMessageToSlack(siteId, {
-  //   rankings: keywords.rankings || [],
-  //   cmsOpportunities: (cmsData || {}).opportunities || [],
-  //   schemaGaps: (schemaData || {}).pages || [],
-  //   competitorsAlerts: competitorData,
-  //   summary: parsed.summary || "No summary",
-  // });
 }
 
 // ── Summary Printer ───────────────────────────────────────────────────

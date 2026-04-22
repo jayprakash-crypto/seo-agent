@@ -465,4 +465,19 @@ const postMessageToSlack = async (site_id, data) => {
   return await postSlackMessage(message, blocks);
 };
 
-export { postMessageToSlack };
+const writeRecommendationsToSheet = async (site_id, recommendations) => {
+  const rows = [
+    ["", "", "", "", ""],
+    ...recommendations.map((item) => [
+      new Date(),
+      site_id,
+      item.module,
+      item.recommendation_text,
+      "pending",
+    ]),
+  ];
+
+  return await writeToSheet(site_id, "Recommendation Outcomes", rows);
+};
+
+export { postMessageToSlack, writeRecommendationsToSheet };
