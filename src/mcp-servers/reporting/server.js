@@ -1,0 +1,269 @@
+import https from "node:https";
+import { google } from "googleapis";
+
+import { SITES } from "../../sites_config.js";
+
+const SERVER_NAME = "reporting";
+const SERVER_VERSION = "1.0.0";
+
+const sites = SITES;
+
+export async function callSlackApi(endpoint, token, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req = https.request(
+      {
+        hostname: "slack.com",
+        path: `/api/${endpoint}`,
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(data),
+        },
+      },
+      (res) => {
+        let buf = "";
+        res.on("data", (chunk) => (buf += chunk));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(buf));
+          } catch (e) {
+            reject(e);
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+// ── Sheets helpers ─────────────────────────────────────────────────────
+function getSheetsClient(siteId) {
+  const envKey = `GSC_OAUTH_SITE_${siteId}`;
+  const raw = process.env[envKey];
+  if (!raw) throw new Error(`Missing env var ${envKey} for site_id=${siteId}`);
+  const credentials = JSON.parse(raw);
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+
+  return google.sheets({ version: "v4", auth });
+}
+
+function getSpreadsheetId() {
+  const id = process.env.SHEETS_ID?.trim();
+  if (!id) throw new Error("Missing env var SHEETS_ID");
+  return id;
+}
+
+// ── Tool implementations ──────────────────────────────────────────────
+
+export async function postSlackMessage(message, blocks, channel) {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) throw new Error("Missing env var SLACK_BOT_TOKEN");
+  const ch = channel ?? process.env.SLACK_CHANNEL_ID;
+  console.log(ch, process.env.SLACK_CHANNEL_ID);
+
+  if (!ch) throw new Error("Missing env var SLACK_CHANNEL_ID");
+
+  console.log("========== Slack Message **********");
+  const body = { channel: ch, text: message };
+  if (blocks) body.blocks = blocks;
+
+  console.log("========== Calling Slack Post API **********");
+  const result = await callSlackApi("chat.postMessage", token, body);
+  console.log("========== Message Sent **********", result.ok);
+  if (!result.ok)
+    throw new Error(`Slack API error: ${result.error ?? "unknown"}`);
+  return { ok: true, ts: result.ts, channel: result.channel };
+}
+
+// Slack section text is capped at 3000 chars — truncate with a safe margin
+function slackTrunc(text, max = 2950) {
+  return text.length <= max ? text : text.slice(0, max - 3) + "...";
+}
+
+function sectionBlock(text) {
+  return { type: "section", text: { type: "mrkdwn", text: slackTrunc(text) } };
+}
+
+export function createWeeklyDigest(siteId, data) {
+  const today = new Date().toISOString().split("T")[0];
+  const { rankings, summary, cmsOpportunities, schemaGaps, competitorsAlerts } =
+    data || {};
+
+  // Cap rankings at 15 to stay within block text limits
+  const rankLines = rankings.length
+    ? `Keywords performance for ${rankings.length} is added in google sheet
+Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y_t3TXp1iI7S3ZidQf6VHtH8UQTY/edit?usp=sharing\n
+    `
+    : "No ranking data available.";
+  console.log("========== Rankings Processed **********");
+
+  // Build schema gaps section
+  const gaps = (schemaGaps ?? []).filter((g) => g.has_gaps);
+  const schemaLines = gaps.length
+    ? gaps
+        .slice(0, 10)
+        .map(
+          (g) =>
+            `• *${g.url}* (${g.page_type})\n    Missing: ${g.missing_types.join(", ")}`,
+        )
+        .join("\n")
+    : "No schema gaps identified this week.";
+
+  // Build competitor alerts section
+  const competitors = competitorsAlerts ?? [];
+  const competitorsLines = competitors.length
+    ? competitors
+        .slice(0, 5)
+        .map((competitor, index) => {
+          let text = `${index + 1}. ${competitor.competitor_domain}: \n`;
+
+          if (competitor.keywordGaps.length === 0) {
+            text += "    No keyword gaps identified.";
+          } else {
+            competitor.keywordGaps.map((gap) => {
+              text += `    • *${gap.keyword}* — competitor pos ${gap.competitor_position}, vol ${gap.competitor_volume.toLocaleString()}\n`;
+            });
+          }
+          return text;
+        })
+        .join("\n")
+    : "No competitor keyword gaps identified this week.";
+
+  console.log(competitorsLines);
+
+  // Header blocks
+  const blocks = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `Weekly SEO Report — ${sites[String(siteId)] ?? `Site ${siteId}`}`,
+        emoji: true,
+      },
+    },
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `*Report date:* ${today}` }],
+    },
+    { type: "divider" },
+    sectionBlock(`*Keyword Rankings*\n${rankLines}`),
+    { type: "divider" },
+    sectionBlock(`*Meta Suggestions (Low-CTR Pages)*`),
+  ];
+
+  // One block per CMS opportunity to avoid 3000-char limit
+  const opportunities = (cmsOpportunities ?? []).slice(0, 5);
+  if (opportunities.length === 0) {
+    blocks.push(sectionBlock("No low-CTR opportunities identified this week."));
+  } else {
+    const text = `Meta suggestion for top ${opportunities.length} pages with lowest CTR in added in approval queue. Open you dashboard to review the suggestion.\n`;
+    blocks.push(sectionBlock(text));
+  }
+  console.log("========== CMS Opportunities Processed **********");
+
+  blocks.push(
+    { type: "divider" },
+    sectionBlock(`*Schema Gaps*\n${schemaLines}`),
+    { type: "divider" },
+    sectionBlock(`*Competitor Keyword Gaps*\n${competitorsLines}`),
+    { type: "divider" },
+    sectionBlock(`*Summary & Actions*\n${summary || "No summary available."}`),
+  );
+
+  console.log("========== Weekly Digest Created **********");
+
+  return {
+    site_id: siteId,
+    date: today,
+    blocks,
+    fallback_text: `Weekly SEO Report — Site ${sites[String(siteId)] ?? `Site ${siteId}`} — ${today}`,
+  };
+}
+
+export async function writeToSheet(siteId, tabName, rows) {
+  console.log("============= Sheets GSC Auth *************** site_id:", siteId);
+  const sheets = getSheetsClient(siteId);
+  const spreadsheetId = getSpreadsheetId();
+
+  console.log("========== Appending to Sheet **********");
+  const result = await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `${tabName}!A1`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: rows },
+  });
+
+  console.log("========== Sheet Updated **********");
+  return {
+    ok: true,
+    tab: tabName,
+    updated_rows: result.data.updates?.updatedRows ?? 0,
+  };
+}
+
+export async function logRecommendation(
+  siteId,
+  module,
+  recommendation,
+  outcome,
+) {
+  const VALID_OUTCOMES = ["pending", "accepted", "rejected", "successful"];
+  if (!VALID_OUTCOMES.includes(outcome)) {
+    throw new Error(`outcome must be one of: ${VALID_OUTCOMES.join(", ")}`);
+  }
+  const date = new Date().toISOString();
+  const rows = [[date, siteId, module, recommendation, outcome]];
+  return writeToSheet(siteId, "Recommendation Outcomes", rows);
+}
+
+const postMessageToSlack = async (site_id, data) => {
+  const messageData = createWeeklyDigest(site_id, data);
+
+  const { message = "", blocks = [], fallback_text } = messageData;
+
+  return await postSlackMessage(message, blocks);
+};
+
+const writeKeywordRankingsToSheet = async (site_id, rankings) => {
+  const rows = [
+    ["", "", "", "", "", ""],
+    ...rankings.map((item) => [
+      new Date(),
+      item.keyword,
+      item.position,
+      item.clicks,
+      item.impressions,
+      item.ctr,
+    ]),
+  ];
+
+  return await writeToSheet(site_id, "Rankings", rows);
+};
+
+const writeRecommendationsToSheet = async (site_id, recommendations) => {
+  const rows = [
+    ["", "", "", "", ""],
+    ...recommendations.map((item) => [
+      new Date(),
+      site_id,
+      item.module,
+      item.recommendation_text,
+      "pending",
+    ]),
+  ];
+
+  return await writeToSheet(site_id, "Recommendation Outcomes", rows);
+};
+
+export {
+  postMessageToSlack,
+  writeKeywordRankingsToSheet,
+  writeRecommendationsToSheet,
+};

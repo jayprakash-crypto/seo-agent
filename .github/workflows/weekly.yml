@@ -2,8 +2,8 @@ name: Weekly SEO Keyword Report
 
 on:
   schedule:
-    - cron: '30 2 * * 1'  # Every Monday at 08:00 IST (02:30 UTC)
-  workflow_dispatch:       # Allow manual trigger
+    - cron: "30 2 * * 1" # Every Monday at 08:00 IST (02:30 UTC)
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
   weekly-keyword-report:
@@ -14,16 +14,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: "20"
+          cache: "npm"
 
-      - name: Install Python dependencies
-        run: pip install anthropic python-dotenv
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run weekly keyword report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GSC_OAUTH_SITE_1: ${{ secrets.GSC_OAUTH_SITE_1 }}
-        run: python src/orchestrators/weekly.py
+          AHREFS_KEY: ${{ secrets.AHREFS_KEY }}
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          BING_WEBMASTER_KEY: ${{ secrets.BING_WEBMASTER_KEY }}
+          CMS_API_URL_SITE_1: ${{ secrets.CMS_API_URL_SITE_1 }}
+          CMS_API_KEY_SITE_1: ${{ secrets.CMS_API_KEY_SITE_1 }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SHEETS_ID: ${{ secrets.SHEETS_ID }}
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
+        run: node src/orchestrators/weekly.js
