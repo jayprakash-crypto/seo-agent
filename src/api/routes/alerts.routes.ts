@@ -34,7 +34,7 @@ export function alertsRouter(io: SocketIOServer): Router {
       req.body as CreateAlertBody;
 
     if (!site_id || !module || !severity || !title || !detail) {
-      res.status(400).json({ error: "Missing required fields" });
+      res.status(400).json({ success: false, error: "Missing required fields" });
       return;
     }
 
@@ -48,10 +48,10 @@ export function alertsRouter(io: SocketIOServer): Router {
         detail: String(detail),
       });
       io.emit("alert:created", alert);
-      res.status(201).json(alert);
+      res.status(201).json({ success: true, ...alert });
     } catch (err) {
       console.error("[alerts] create error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 
@@ -64,10 +64,10 @@ export function alertsRouter(io: SocketIOServer): Router {
         severity,
         site_id: site_id ? Number(site_id) : undefined,
       });
-      res.json(result);
+      res.json({ success: true, ...result });
     } catch (err) {
       console.error("[alerts] list error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 
@@ -76,14 +76,14 @@ export function alertsRouter(io: SocketIOServer): Router {
     try {
       const alert = await acknowledgeAlert(req.params.id);
       if (!alert) {
-        res.status(404).json({ error: "Alert not found" });
+        res.status(404).json({ success: false, error: "Alert not found" });
         return;
       }
       io.emit("alert:updated", alert);
-      res.json(alert);
+      res.json({ success: true, ...alert });
     } catch (err) {
       console.error("[alerts] acknowledge error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 
@@ -92,14 +92,14 @@ export function alertsRouter(io: SocketIOServer): Router {
     try {
       const alert = await resolveAlert(req.params.id);
       if (!alert) {
-        res.status(404).json({ error: "Alert not found" });
+        res.status(404).json({ success: false, error: "Alert not found" });
         return;
       }
       io.emit("alert:updated", alert);
-      res.json(alert);
+      res.json({ success: true, ...alert });
     } catch (err) {
       console.error("[alerts] resolve error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 

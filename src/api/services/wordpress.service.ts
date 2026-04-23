@@ -4,7 +4,10 @@
  */
 
 // ── Auth helper ───────────────────────────────────────────────────────
-function getWpAuth(siteId: number | string): { baseUrl: string; authHeader: string } {
+function getWpAuth(siteId: number | string): {
+  baseUrl: string;
+  authHeader: string;
+} {
   const urlKey = `CMS_API_URL_SITE_${siteId}`;
   const keyKey = `CMS_API_KEY_SITE_${siteId}`;
   const baseUrl = process.env[urlKey]?.trim();
@@ -64,7 +67,9 @@ export async function updatePageMeta(
         Authorization: authHeader,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify([{ url: pageUrl, title, description }]),
+      body: JSON.stringify([
+        { url: pageUrl, title, description, status: "publish" },
+      ]),
     });
 
     const contentType = res.headers.get("content-type") ?? "";
@@ -86,7 +91,13 @@ export async function updatePageMeta(
       return { ok: false, error: `claude-seo plugin error: ${errMsg}` };
     }
 
-    return { ok: true, url: pageUrl, title, description, updated: data.updated };
+    return {
+      ok: true,
+      url: pageUrl,
+      title,
+      description,
+      updated: data.updated,
+    };
   } catch (err) {
     return { ok: false, error: String(err) };
   }

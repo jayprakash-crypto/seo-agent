@@ -15,6 +15,7 @@ import {
   rejectApproval,
   deferApproval,
 } from "../controllers/approvals.controller.js";
+import { AuthRequest } from "../middleware/auth.middleware.js";
 
 // Request body shape for POST /approvals (all strings from JSON body)
 interface CreateApprovalBody {
@@ -32,11 +33,19 @@ export function approvalsRouter(io: SocketIOServer): Router {
 
   // POST /approvals
   router.post("/", async (req: Request, res: Response) => {
-    const { site_id, module, type, priority = 3, title, content, preview_url } =
-      req.body as CreateApprovalBody;
+    const {
+      site_id,
+      module,
+      type,
+      priority = 3,
+      title,
+      content,
+      preview_url,
+    } = req.body as CreateApprovalBody;
 
     if (!site_id || !module || !type || !title || !content) {
       res.status(400).json({
+        success: false,
         error: "Missing required fields: site_id, module, type, title, content",
       });
       return;
@@ -54,28 +63,31 @@ export function approvalsRouter(io: SocketIOServer): Router {
         preview_url: preview_url ? String(preview_url) : null,
       });
       io.emit("approval:created", approval);
-      res.status(201).json(approval);
+      res.status(201).json({ success: true, ...approval });
     } catch (err) {
       console.error("[approvals] create error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 
   // GET /approvals
   router.get("/", async (req: Request, res: Response) => {
-    const { status, sort, site_id, limit, offset } = req.query as Record<string, string>;
+    const { status, sort, site_id, limit, offset } = req.query as Record<
+      string,
+      string
+    >;
     try {
       const result = await listApprovals({
         status,
         site_id: site_id ? Number(site_id) : undefined,
         sort,
-        limit:  limit  ? Number(limit)  : undefined,
+        limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
       });
-      res.json(result);
+      res.json({ success: true, ...result });
     } catch (err) {
       console.error("[approvals] list error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 
@@ -84,81 +96,85 @@ export function approvalsRouter(io: SocketIOServer): Router {
     try {
       const approval = await getApprovalById(req.params.id);
       if (!approval) {
-        res.status(404).json({ error: "Approval not found" });
+        res.status(404).json({ success: false, error: "Approval not found" });
         return;
       }
-      res.json(approval);
+      res.json({ success: true, ...approval });
     } catch (err) {
       console.error("[approvals] get error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 
   // POST /approvals/:id/approve
   router.post("/:id/approve", async (req: Request, res: Response) => {
-    const { actioned_by, content } = req.body as {
-      actioned_by?: string;
+    const { sub } = (req as AuthRequest).user!;
+    const { content } = req.body as {
       content?: Record<string, unknown>;
     };
     try {
       const approval = await approveApproval(
         req.params.id,
-        actioned_by ?? "operator",
+        sub ?? "operator",
         content,
       );
       if (!approval) {
-        res.status(404).json({ error: "Approval not found" });
+        res.status(404).json({ success: false, error: "Approval not found" });
         return;
       }
       io.emit("approval:updated", approval);
-      res.json(approval);
+      res.json({ success: true, ...approval });
     } catch (err) {
       console.error("[approvals] approve error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 
   // POST /approvals/:id/reject
   router.post("/:id/reject", async (req: Request, res: Response) => {
-    const { actioned_by, reason } = req.body as {
-      actioned_by?: string;
+    const { sub } = (req as AuthRequest).user!;
+    const { reason } = req.body as {
       reason?: string;
     };
+
     if (!reason) {
-      res.status(400).json({ error: "Reject reason is required" });
+      res
+        .status(400)
+        .json({ success: false, error: "Reject reason is required" });
       return;
     }
     try {
       const approval = await rejectApproval(
         req.params.id,
-        actioned_by ?? "operator",
+        sub ?? "operator",
         reason,
       );
       if (!approval) {
-        res.status(404).json({ error: "Approval not found" });
+        res.status(404).json({ success: false, error: "Approval not found" });
         return;
       }
       io.emit("approval:updated", approval);
-      res.json(approval);
+      res.json({ success: true, ...approval });
     } catch (err) {
       console.error("[approvals] reject error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 
   // POST /approvals/:id/defer
   router.post("/:id/defer", async (req: Request, res: Response) => {
     try {
-      const approval = await deferApproval(req.params.id);
+      const { sub } = (req as AuthRequest).user!;
+      const approval = await deferApproval(req.params.id, sub ?? "operator");
       if (!approval) {
-        res.status(404).json({ error: "Approval not found" });
+        res.status(404).json({ success: false, error: "Approval not found" });
         return;
       }
       io.emit("approval:updated", approval);
-      res.json(approval);
+      res.json({ success: true, ...approval });
     } catch (err) {
       console.error("[approvals] defer error:", err);
-      res.status(500).json({ error: "Database error" });
+      res.status(500).json({ success: false, error: "Database error" });
     }
   });
 

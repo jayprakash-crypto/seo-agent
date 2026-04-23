@@ -1,12 +1,6 @@
-/**
- * GET /api/sites/[site_id]/overview
- * Returns site metrics: avg position, GBP pack status, avg rating,
- * open alerts count, and traffic sparkline (28-day clicks).
- * Reads from Google Sheets and the local alerts store.
- */
-
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
+import { getCookie } from "@/lib/utils";
 
 function getAuth(siteId: string) {
   const raw = process.env[`GSC_OAUTH_SITE_${siteId}`];
@@ -26,39 +20,41 @@ function getSiteUrl(siteId: string): string {
 
 type Params = { params: Promise<{ site_id: string }> };
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const { site_id } = await params;
   const API = process.env.APPROVALS_API_URL ?? "http://localhost:3002";
+  const cookie = req.headers.get("cookie");
+  const token = getCookie("seo-token", cookie || "");
 
-  // Fetch open alerts count
   let open_alerts = 0;
   try {
     const alertsRes = await fetch(
       `${API}/alerts?status=open&site_id=${site_id}`,
-      { cache: "no-store" },
+      {
+        cache: "no-store",
+        headers: { authorization: `Bearer ${token}` },
+      } as RequestInit,
     );
     if (!alertsRes.ok) throw new Error(`alerts API ${alertsRes.status}`);
-    const alertsData = await alertsRes.json() as { total: number };
+    const alertsData = (await alertsRes.json()) as { total: number };
     open_alerts = alertsData.total ?? 0;
   } catch (err) {
     console.error("[overview] alerts fetch failed:", err);
   }
 
-  // Fetch GSC data for avg position + sparkline
   let avg_position: number | null = null;
   const traffic_sparkline: Array<{ date: string; clicks: number }> = [];
 
   try {
-    const auth = getAuth(site_id);
+    const gAuth = getAuth(site_id);
     const siteUrl = getSiteUrl(site_id);
-    const sc = google.searchconsole({ version: "v1", auth });
+    const sc = google.searchconsole({ version: "v1", auth: gAuth });
 
     const end = new Date();
     const start = new Date();
     start.setDate(end.getDate() - 28);
     const fmt = (d: Date) => d.toISOString().split("T")[0];
 
-    // Position
     const posRes = await sc.searchanalytics.query({
       siteUrl,
       requestBody: {
@@ -70,7 +66,6 @@ export async function GET(_req: Request, { params }: Params) {
     });
     avg_position = posRes.data.rows?.[0]?.position ?? null;
 
-    // Daily clicks for sparkline
     const clickRes = await sc.searchanalytics.query({
       siteUrl,
       requestBody: {
@@ -87,15 +82,14 @@ export async function GET(_req: Request, { params }: Params) {
       });
     }
   } catch (err) {
-    /* GSC may not be available in dev */
-    console.error("GSC Error : ", err);
+    console.error("GSC Error:", err);
   }
 
   return NextResponse.json({
     site_id: Number(site_id),
     avg_position,
-    gbp_pack: null, // populated by GBP connector when available
-    avg_rating: null, // populated by review module when available
+    gbp_pack: null,
+    avg_rating: null,
     open_alerts,
     traffic_sparkline,
     last_updated: new Date().toISOString(),

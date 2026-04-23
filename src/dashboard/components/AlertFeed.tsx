@@ -20,7 +20,10 @@ interface Alert {
   resolved_at?: string;
 }
 
-const SEVERITY_VARIANT: Record<Alert["severity"], "destructive" | "default" | "secondary"> = {
+const SEVERITY_VARIANT: Record<
+  Alert["severity"],
+  "destructive" | "default" | "secondary"
+> = {
   critical: "destructive",
   warning: "default",
   info: "secondary",
@@ -40,18 +43,17 @@ function AlertCard({
   onAction: () => void;
 }) {
   const [loading, setLoading] = useState(false);
-  const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
 
   async function acknowledge() {
     setLoading(true);
-    await fetch(`${API}/alerts/${alert.id}/acknowledge`, { method: "POST" });
+    await fetch(`/api/alerts/${alert.id}/acknowledge`, { method: "POST" });
     setLoading(false);
     onAction();
   }
 
   async function resolve() {
     setLoading(true);
-    await fetch(`${API}/alerts/${alert.id}/resolve`, { method: "POST" });
+    await fetch(`/api/alerts/${alert.id}/resolve`, { method: "POST" });
     setLoading(false);
     onAction();
   }
@@ -125,13 +127,11 @@ export default function AlertFeed() {
   const [filter, setFilter] = useState<Alert["severity"] | "all">("all");
   const [loading, setLoading] = useState(true);
 
-  const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
-
   const fetchAlerts = useCallback(async () => {
     try {
       const params = new URLSearchParams({ status: "open" });
       if (filter !== "all") params.set("severity", filter);
-      const res = await fetch(`${API}/alerts?${params.toString()}`);
+      const res = await fetch(`/api/alerts?${params.toString()}`);
       const data = (await res.json()) as { alerts: Alert[] };
       setAlerts(data.alerts ?? []);
     } catch {
@@ -139,7 +139,7 @@ export default function AlertFeed() {
     } finally {
       setLoading(false);
     }
-  }, [API, filter]);
+  }, [filter]);
 
   useEffect(() => {
     void fetchAlerts();

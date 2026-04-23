@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
-import SessionProvider from "@/components/SessionProvider";
 
 export const metadata: Metadata = {
   title: "SEO Agent Dashboard",
@@ -24,7 +23,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <SessionProvider>{children}</SessionProvider>
+        {children}
         <Toaster />
       </body>
     </html>
