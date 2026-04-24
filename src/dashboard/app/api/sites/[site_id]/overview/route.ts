@@ -22,8 +22,6 @@ type Params = { params: Promise<{ site_id: string }> };
 export async function GET(req: NextRequest, { params }: Params) {
   const { site_id } = await params;
   const API = process.env.APPROVALS_API_URL ?? "http://localhost:3002";
-  console.log("APIS ", API);
-  
 
   let open_alerts = 0;
   try {
