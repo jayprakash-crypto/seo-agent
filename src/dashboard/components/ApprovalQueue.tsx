@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useContext } from "react";
 import { getSocket } from "@/lib/socket";
 import { getSiteName } from "@/lib/sites";
 import {
@@ -29,6 +29,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+import { UserContext } from "@/providers/users.provider";
+import { proxyFetch } from "@/lib/api";
+
 // ── Types ─────────────────────────────────────────────────────────────
 interface Approval {
   id: string;
@@ -52,7 +55,13 @@ const REJECT_REASONS = [
   "Other",
 ];
 
-const PRIORITY_MAP: Record<number, { label: string; variant: "destructive" | "default" | "secondary" | "outline" }> = {
+const PRIORITY_MAP: Record<
+  number,
+  {
+    label: string;
+    variant: "destructive" | "default" | "secondary" | "outline";
+  }
+> = {
   1: { label: "Critical", variant: "destructive" },
   2: { label: "High", variant: "default" },
   3: { label: "Medium", variant: "secondary" },
@@ -137,7 +146,11 @@ function RejectDialog({
           <p className="text-sm text-muted-foreground">{approval.title}</p>
         </DialogHeader>
 
-        <Select onValueChange={(v: string | null) => { if (v) setReason(v); }}>
+        <Select
+          onValueChange={(v: string | null) => {
+            if (v) setReason(v);
+          }}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Select a reason…" />
           </SelectTrigger>
@@ -175,20 +188,20 @@ function ApprovalCard({
   approval: Approval;
   onAction: () => void;
 }) {
+  const user = useContext(UserContext);
+
   const [editOpen, setEditOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
   const priority = PRIORITY_MAP[approval.priority] ?? PRIORITY_MAP[3];
 
   async function doApprove(content?: Record<string, unknown>) {
     setLoading(true);
-    await fetch(`${API}/approvals/${approval.id}/approve`, {
+    await proxyFetch(`/api/approvals/${approval.id}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        actioned_by: "operator",
         ...(content ? { content } : {}),
       }),
     });
@@ -199,10 +212,10 @@ function ApprovalCard({
 
   async function doReject(reason: string) {
     setLoading(true);
-    await fetch(`${API}/approvals/${approval.id}/reject`, {
+    await proxyFetch(`/api/approvals/${approval.id}/reject`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actioned_by: "operator", reason }),
+      body: JSON.stringify({ reason }),
     });
     setLoading(false);
     setRejectOpen(false);
@@ -211,7 +224,7 @@ function ApprovalCard({
 
   async function doDefer() {
     setLoading(true);
-    await fetch(`${API}/approvals/${approval.id}/defer`, {
+    await proxyFetch(`/api/approvals/${approval.id}/defer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -281,14 +294,14 @@ function ApprovalCard({
           >
             Reject
           </Button>
-          <Button
+          {/* <Button
             size="sm"
             variant="ghost"
             disabled={loading}
             onClick={doDefer}
           >
             Defer
-          </Button>
+          </Button> */}
         </CardFooter>
       </Card>
 
@@ -317,11 +330,9 @@ export default function ApprovalQueue({
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
-
   const fetchApprovals = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/approvals?status=pending&sort=priority`);
+      const res = await proxyFetch(`/api/approvals?status=pending&sort=priority`);
       const data = (await res.json()) as { approvals: Approval[] };
       setApprovals(data.approvals ?? []);
       onCountChange?.(data.approvals?.length ?? 0);
@@ -330,7 +341,7 @@ export default function ApprovalQueue({
     } finally {
       setLoading(false);
     }
-  }, [API, onCountChange]);
+  }, [onCountChange]);
 
   useEffect(() => {
     void fetchApprovals();

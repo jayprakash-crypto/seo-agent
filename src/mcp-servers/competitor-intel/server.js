@@ -1,13 +1,7 @@
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  isInitializeRequest,
-} from "@modelcontextprotocol/sdk/types.js";
 import { google } from "googleapis";
+
+import { SITES } from "../../sites_config.js";
 
 const SERVER_NAME = "competitor-intel";
 const SERVER_VERSION = "1.0.0";
@@ -83,9 +77,7 @@ export function getGscAuth(siteId) {
 }
 
 export function getSiteUrl(siteId) {
-  const map = {
-    1: "https://lifecircle.in",
-  };
+  const map = SITES;
   const url = map[String(siteId)];
   if (!url) throw new Error(`Unknown site_id=${siteId}`);
   return url;
@@ -295,135 +287,6 @@ export async function getContentGaps(siteId, competitorDomain) {
     topic_groups_count: topic_groups.length,
     topic_groups,
   };
-}
-
-// ── MCP Server factory ────────────────────────────────────────────────
-function createMcpServer() {
-  const s = new Server(
-    { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {} } },
-  );
-
-  s.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      {
-        name: "get_competitor_keywords",
-        description:
-          "Fetch the top 50 organic keywords a competitor domain ranks for via Ahrefs API v3. Results are cached for 24 hours per domain.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            competitor_domain: {
-              type: "string",
-              description: "Competitor domain (e.g. 'example.com')",
-            },
-          },
-          required: ["site_id", "competitor_domain"],
-        },
-      },
-      {
-        name: "get_keyword_gaps",
-        description:
-          "Compare the site's GSC keywords against a competitor's Ahrefs keywords. Returns keywords the competitor ranks for that the site does not.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            competitor_domain: {
-              type: "string",
-              description: "Competitor domain to compare against",
-            },
-          },
-          required: ["site_id", "competitor_domain"],
-        },
-      },
-      {
-        name: "get_competitor_backlinks",
-        description:
-          "Fetch the top 50 backlinks pointing to a competitor domain via Ahrefs API v3. Results are cached for 24 hours per domain.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            competitor_domain: {
-              type: "string",
-              description: "Competitor domain (e.g. 'example.com')",
-            },
-          },
-          required: ["site_id", "competitor_domain"],
-        },
-      },
-      {
-        name: "get_content_gaps",
-        description:
-          "Cluster keyword gaps (from get_keyword_gaps) into topic groups to identify content areas competitors cover that the site does not. Groups are sorted by average volume descending.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            competitor_domain: {
-              type: "string",
-              description: "Competitor domain to analyse content gaps against",
-            },
-          },
-          required: ["site_id", "competitor_domain"],
-        },
-      },
-    ],
-  }));
-
-  s.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const { name, arguments: args } = req.params;
-    try {
-      switch (name) {
-        case "get_competitor_keywords": {
-          console.log("========== GET COMPETITOR KEYWORDS ==========");
-          const result = await getCompetitorKeywords(
-            Number(args.site_id),
-            args.competitor_domain,
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "get_keyword_gaps": {
-          console.log("========== GET KEYWORD GAPS ==========");
-          const result = await getKeywordGaps(
-            Number(args.site_id),
-            args.competitor_domain,
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "get_competitor_backlinks": {
-          console.log("========== GET COMPETITOR BACKLINKS ==========");
-          const result = await getCompetitorBacklinks(
-            Number(args.site_id),
-            args.competitor_domain,
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "get_content_gaps": {
-          console.log("========== GET CONTENT GAPS ==========");
-          const result = await getContentGaps(
-            Number(args.site_id),
-            args.competitor_domain,
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
-    } catch (error) {
-      console.error(`Error executing tool ${name}:`, error);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ error: String(error) }) },
-        ],
-        isError: true,
-      };
-    }
-  });
-
-  return s;
 }
 
 const getKeywordsGapForCompetitorDomain = async (siteId, competitorDomains) => {

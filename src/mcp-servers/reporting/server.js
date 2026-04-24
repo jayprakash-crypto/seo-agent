@@ -1,22 +1,12 @@
-import { randomUUID } from "node:crypto";
 import https from "node:https";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  isInitializeRequest,
-} from "@modelcontextprotocol/sdk/types.js";
 import { google } from "googleapis";
+
+import { SITES } from "../../sites_config.js";
 
 const SERVER_NAME = "reporting";
 const SERVER_VERSION = "1.0.0";
 
-// ── Slack helpers ──────────────────────────────────────────────────────
-
-const sites = {
-  1: "https://lifecircle.in",
-};
+const sites = SITES;
 
 export async function callSlackApi(endpoint, token, body) {
   return new Promise((resolve, reject) => {
@@ -108,13 +98,9 @@ export function createWeeklyDigest(siteId, data) {
 
   // Cap rankings at 15 to stay within block text limits
   const rankLines = rankings.length
-    ? rankings
-        .slice(0, 15)
-        .map(
-          (r) =>
-            `• *${r.keyword}*: pos ${r.position ?? "N/A"}, ${r.clicks} clicks, ${(r.ctr * 100).toFixed(1)}% CTR`,
-        )
-        .join("\n")
+    ? `Keywords performance for ${rankings.length} is added in google sheet
+Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y_t3TXp1iI7S3ZidQf6VHtH8UQTY/edit?usp=sharing\n
+    `
     : "No ranking data available.";
   console.log("========== Rankings Processed **********");
 
@@ -131,9 +117,9 @@ export function createWeeklyDigest(siteId, data) {
     : "No schema gaps identified this week.";
 
   // Build competitor alerts section
-  const compotitors = competitorsAlerts ?? [];
-  const competitorsLines = compotitors.length
-    ? compotitors
+  const competitors = competitorsAlerts ?? [];
+  const competitorsLines = competitors.length
+    ? competitors
         .slice(0, 5)
         .map((competitor, index) => {
           let text = `${index + 1}. ${competitor.competitor_domain}: \n`;
@@ -177,23 +163,8 @@ export function createWeeklyDigest(siteId, data) {
   if (opportunities.length === 0) {
     blocks.push(sectionBlock("No low-CTR opportunities identified this week."));
   } else {
-    for (const o of opportunities) {
-      console.log(
-        "============= Processing CMS Opportunity ***************\n",
-        o,
-      );
-      const ctr = (o.current_ctr * 100).toFixed(1);
-      const text =
-        `• *${o.url} * (${o.impressions.toLocaleString()} impr, ${ctr}% CTR)\n` +
-        `    *Current:*\n` +
-        `        _Title:_ ${o.current_title}\n` +
-        `        _Desc:_ ${o.current_description}\n` +
-        `    *Suggestion:*\n` +
-        `        _Title:_ ${o.suggested_title}\n` +
-        `        _Desc:_ ${o.suggested_description}\n` +
-        `    *Reasoning:* ${o.reasoning ?? "N/A"}`;
-      blocks.push(sectionBlock(text));
-    }
+    const text = `Meta suggestion for top ${opportunities.length} pages with lowest CTR in added in approval queue. Open you dashboard to review the suggestion.\n`;
+    blocks.push(sectionBlock(text));
   }
   console.log("========== CMS Opportunities Processed **********");
 
@@ -252,217 +223,28 @@ export async function logRecommendation(
   return writeToSheet(siteId, "Recommendation Outcomes", rows);
 }
 
-// ── MCP Server factory ────────────────────────────────────────────────
-function createMcpServer() {
-  const s = new Server(
-    { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {} } },
-  );
-
-  s.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      {
-        name: "post_slack_message",
-        description:
-          "Post a formatted message to Slack. Supports optional Block Kit blocks for rich formatting.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            message: {
-              type: "string",
-              description: "Fallback plain-text message",
-            },
-            blocks: {
-              type: "array",
-              items: { type: "object" },
-              description: "Slack Block Kit blocks (optional)",
-            },
-            channel: {
-              type: "string",
-              description:
-                "Slack channel ID (defaults to SLACK_CHANNEL_ID env var)",
-            },
-          },
-          required: ["message"],
-        },
-      },
-      {
-        name: "create_weekly_digest",
-        description:
-          "Format keyword performance, CMS meta suggestions, schema gaps, and competitor alerts into a structured Slack Block Kit digest. Returns blocks and fallback_text ready to pass to post_slack_message.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            rankings: {
-              type: "array",
-              items: { type: "object" },
-              description: "Array of keyword ranking objects from get_rankings",
-            },
-            top_movers: {
-              type: "object",
-              description: "Top movers object from get_top_movers",
-            },
-            velocity: {
-              type: "object",
-              description: "Velocity object from get_rank_velocity",
-            },
-            summary: {
-              type: "string",
-              description:
-                "Human-readable summary and action items for the week",
-            },
-            cms_opportunities: {
-              type: "array",
-              items: { type: "object" },
-              description:
-                "Optional array of low-CTR page objects from cms-connector, each with url, impressions, current_ctr, suggested_title, suggested_description",
-            },
-            schema_gaps: {
-              type: "array",
-              items: { type: "object" },
-              description:
-                "Optional array of schema gap objects from schema-manager, each with url, page_type, missing_types, has_gaps",
-            },
-            competitor_alerts: {
-              type: "array",
-              items: { type: "object" },
-              description:
-                "Optional array of competitor keyword gap objects from competitor-intel, each with keyword, competitor_position, competitor_volume",
-            },
-          },
-          required: [
-            "site_id",
-            "rankings",
-            "top_movers",
-            "velocity",
-            "summary",
-          ],
-        },
-      },
-      {
-        name: "write_to_sheet",
-        description:
-          "Append rows to a Google Sheets tab. Uses the GSC service account credentials for the given site_id.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: {
-              type: "number",
-              description:
-                "Site ID (used to select service account credentials)",
-            },
-            tab_name: {
-              type: "string",
-              description: "Sheet tab name (e.g. 'Weekly Rankings')",
-            },
-            rows: {
-              type: "array",
-              items: { type: "array" },
-              description: "Array of row arrays to append",
-            },
-          },
-          required: ["site_id", "tab_name", "rows"],
-        },
-      },
-      {
-        name: "log_recommendation",
-        description:
-          "Log a Claude recommendation and its outcome to the 'Recommendation Outcomes' tab in Google Sheets for accuracy tracking over time.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            module: {
-              type: "string",
-              description:
-                "Module that generated the recommendation (e.g. 'keyword-tracker')",
-            },
-            recommendation: {
-              type: "string",
-              description: "The recommendation text",
-            },
-            outcome: {
-              type: "string",
-              enum: ["pending", "accepted", "rejected", "successful"],
-              description: "Current outcome status",
-            },
-          },
-          required: ["site_id", "module", "recommendation", "outcome"],
-        },
-      },
-    ],
-  }));
-
-  s.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const { name, arguments: args } = req.params;
-    try {
-      switch (name) {
-        case "post_slack_message": {
-          console.log("========== POST SLACK MESSAGE ==========");
-          const result = await postSlackMessage(
-            args.message,
-            args.blocks,
-            args.channel,
-          );
-          console.log("========== Slack Response **********", result);
-
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "create_weekly_digest": {
-          console.log("========== CREATE WEEKLY DIGEST ==========");
-          const result = createWeeklyDigest(
-            Number(args.site_id),
-            args.rankings,
-            args.summary,
-            args.cms_opportunities,
-            args.schema_gaps,
-            args.competitor_alerts,
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "write_to_sheet": {
-          console.log("========== WRITE TO SHEET ==========");
-          const result = await writeToSheet(
-            Number(args.site_id),
-            args.tab_name,
-            args.rows,
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "log_recommendation": {
-          console.log("========== LOG RECOMMENDATION ==========");
-          const result = await logRecommendation(
-            Number(args.site_id),
-            args.module,
-            args.recommendation,
-            args.outcome,
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
-    } catch (error) {
-      console.error(`Error executing tool ${name}:`, error);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ error: String(error) }) },
-        ],
-        isError: true,
-      };
-    }
-  });
-
-  return s;
-}
-
 const postMessageToSlack = async (site_id, data) => {
   const messageData = createWeeklyDigest(site_id, data);
 
   const { message = "", blocks = [], fallback_text } = messageData;
 
   return await postSlackMessage(message, blocks);
+};
+
+const writeKeywordRankingsToSheet = async (site_id, rankings) => {
+  const rows = [
+    ["", "", "", "", "", ""],
+    ...rankings.map((item) => [
+      new Date(),
+      item.keyword,
+      item.position,
+      item.clicks,
+      item.impressions,
+      item.ctr,
+    ]),
+  ];
+
+  return await writeToSheet(site_id, "Rankings", rows);
 };
 
 const writeRecommendationsToSheet = async (site_id, recommendations) => {
@@ -480,4 +262,8 @@ const writeRecommendationsToSheet = async (site_id, recommendations) => {
   return await writeToSheet(site_id, "Recommendation Outcomes", rows);
 };
 
-export { postMessageToSlack, writeRecommendationsToSheet };
+export {
+  postMessageToSlack,
+  writeKeywordRankingsToSheet,
+  writeRecommendationsToSheet,
+};

@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { proxyFetch } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface Approval {
@@ -31,9 +32,10 @@ interface Approval {
   title: string;
   status: "pending" | "approved" | "rejected" | "deferred";
   created_at: string;
-  actioned_at: string | null;
+  actioned_at: string;
   actioned_by: string | null;
   reject_reason: string | null;
+  actioned_user_name?: string | null;
 }
 
 interface PageResult {
@@ -69,8 +71,6 @@ export default function AllApprovals() {
   const [pageSize, setPageSize] = useState(10);
   const [offset, setOffset] = useState(0);
 
-  const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
-
   const fetchPage = useCallback(async () => {
     setLoading(true);
     try {
@@ -81,15 +81,16 @@ export default function AllApprovals() {
       });
       if (statusFilter !== "all") params.set("status", statusFilter);
 
-      const res = await fetch(`${API}/approvals?${params}`);
+      const res = await proxyFetch(`/api/approvals?${params}`);
       const json = (await res.json()) as PageResult;
+
       setData(json);
     } catch {
       // keep previous state on network error
     } finally {
       setLoading(false);
     }
-  }, [API, statusFilter, pageSize, offset]);
+  }, [statusFilter, pageSize, offset]);
 
   // Reset to page 0 when filter or page-size changes
   useEffect(() => {
@@ -173,11 +174,10 @@ export default function AllApprovals() {
               <TableHead className="hidden md:table-cell">Module</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="hidden lg:table-cell">Created</TableHead>
-              <TableHead className="hidden lg:table-cell">Rejected Reason</TableHead>
-              <TableHead className="hidden lg:table-cell">
-                Actioned by
-              </TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead>Rejected Reason</TableHead>
+              <TableHead>Actioned by</TableHead>
+              <TableHead>Actioned On</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -200,7 +200,7 @@ export default function AllApprovals() {
                 </TableCell>
               </TableRow>
             ) : (
-              data.approvals.map((a, idx) => (
+              data?.approvals?.map((a, idx) => (
                 <TableRow key={a.id}>
                   <TableCell className="text-xs text-muted-foreground">
                     {offset + idx + 1}
@@ -227,15 +227,18 @@ export default function AllApprovals() {
                       {a.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                  <TableCell className="text-xs text-muted-foreground">
                     {new Date(a.created_at).toLocaleDateString()}
                   </TableCell>
-                  <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                  <TableCell className="text-xs text-muted-foreground">
                     {a.reject_reason ?? "—"}
                   </TableCell>
 
-                  <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                    {a.actioned_by ?? "—"}
+                  <TableCell className="text-xs text-muted-foreground">
+                    {a.actioned_user_name ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(a.actioned_at).toLocaleDateString()}
                   </TableCell>
                 </TableRow>
               ))

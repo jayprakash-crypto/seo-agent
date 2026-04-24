@@ -1,13 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  isInitializeRequest,
-} from "@modelcontextprotocol/sdk/types.js";
-import express from "express";
 import { google } from "googleapis";
+
+import { SITES } from "../../sites_config.js";
 
 const SERVER_NAME = "keyword-tracker";
 const SERVER_VERSION = "1.0.0";
@@ -28,9 +21,7 @@ export function getGscAuth(siteId) {
 }
 
 export function getSiteUrl(siteId) {
-  const map = {
-    "1": "https://lifecircle.in",
-  };
+  const map = SITES;
   const url = map[String(siteId)];
   if (!url) throw new Error(`Unknown site_id=${siteId}`);
   return url;
@@ -103,11 +94,7 @@ export async function getRankings(siteId, keywords) {
   return { site_id: siteId, site_url: siteUrl, rankings: results };
 }
 
-export async function getRankingHistory(
-  siteId,
-  keyword,
-  days,
-) {
+export async function getRankingHistory(siteId, keyword, days) {
   if (!keyword || typeof keyword !== "string") {
     throw new Error("keyword must be a non-empty string");
   }
@@ -167,11 +154,7 @@ export async function getRankingHistory(
   return { site_id: siteId, site_url: siteUrl, keyword, days, history };
 }
 
-export async function getTopMovers(
-  siteId,
-  threshold,
-  direction,
-) {
+export async function getTopMovers(siteId, threshold, direction) {
   if (typeof threshold !== "number" || threshold <= 0) {
     throw new Error("threshold must be a positive number");
   }
@@ -266,11 +249,7 @@ export async function getTopMovers(
   };
 }
 
-export async function getRankVelocity(
-  siteId,
-  keyword,
-  windowDays,
-) {
+export async function getRankVelocity(siteId, keyword, windowDays) {
   if (!keyword || typeof keyword !== "string") {
     throw new Error("keyword must be a non-empty string");
   }

@@ -9,18 +9,18 @@ import { updatePageMeta } from "../services/wordpress.service.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 export interface Approval extends RowDataPacket {
-  id: string;                   // VARCHAR(36) UUID
-  site_id: number;              // INT
-  module: string;               // VARCHAR(64)
-  type: string;                 // VARCHAR(64)
-  priority: number;             // TINYINT — 1=critical, 2=high, 3=medium
-  title: string;                // VARCHAR(255)
+  id: string; // VARCHAR(36) UUID
+  site_id: number; // INT
+  module: string; // VARCHAR(64)
+  type: string; // VARCHAR(64)
+  priority: number; // TINYINT — 1=critical, 2=high, 3=medium
+  title: string; // VARCHAR(255)
   content: Record<string, unknown>; // JSON (parsed by mysql2)
-  preview_url: string | null;   // VARCHAR(512) | NULL
+  preview_url: string | null; // VARCHAR(512) | NULL
   status: "pending" | "approved" | "rejected" | "deferred"; // VARCHAR(16)
-  created_at: Date;             // DATETIME(3)
-  actioned_at: Date | null;     // DATETIME(3) | NULL
-  actioned_by: string | null;   // VARCHAR(64) | NULL
+  created_at: Date; // DATETIME(3)
+  actioned_at: Date | null; // DATETIME(3) | NULL
+  actioned_by: string | null; // VARCHAR(64) | NULL
   reject_reason: string | null; // VARCHAR(255) | NULL
 }
 
@@ -45,12 +45,14 @@ export interface ApprovalJSON {
 function toJSON(row: Approval): ApprovalJSON {
   return {
     ...row,
-    content: typeof row.content === "string"
-      ? (JSON.parse(row.content) as Record<string, unknown>)
-      : row.content,
-    created_at: row.created_at instanceof Date
-      ? row.created_at.toISOString()
-      : String(row.created_at),
+    content:
+      typeof row.content === "string"
+        ? (JSON.parse(row.content) as Record<string, unknown>)
+        : row.content,
+    created_at:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : String(row.created_at),
     actioned_at: row.actioned_at
       ? row.actioned_at instanceof Date
         ? row.actioned_at.toISOString()
@@ -61,7 +63,17 @@ function toJSON(row: Approval): ApprovalJSON {
 
 // ── CREATE ────────────────────────────────────────────────────────────
 export async function createApproval(
-  data: Pick<Approval, "id" | "site_id" | "module" | "type" | "priority" | "title" | "content" | "preview_url">,
+  data: Pick<
+    Approval,
+    | "id"
+    | "site_id"
+    | "module"
+    | "type"
+    | "priority"
+    | "title"
+    | "content"
+    | "preview_url"
+  >,
 ): Promise<ApprovalJSON> {
   await pool.query<ResultSetHeader>(
     `INSERT INTO approvals
@@ -89,33 +101,53 @@ export async function listApprovals(filters: {
   sort?: string;
   limit?: number;
   offset?: number;
-}): Promise<{ approvals: ApprovalJSON[]; total: number; limit: number; offset: number }> {
+}): Promise<{
+  approvals: ApprovalJSON[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  if (filters.status)  { conditions.push("status = ?");  params.push(filters.status); }
-  if (filters.site_id) { conditions.push("site_id = ?"); params.push(filters.site_id); }
+  if (filters.status) {
+    conditions.push("status = ?");
+    params.push(filters.status);
+  }
+  if (filters.site_id) {
+    conditions.push("site_id = ?");
+    params.push(filters.site_id);
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  const order = filters.sort === "priority"
-    ? "ORDER BY priority ASC"
-    : "ORDER BY created_at DESC";
+  const order =
+    filters.sort === "priority"
+      ? "ORDER BY priority ASC"
+      : "ORDER BY ap.created_at DESC";
 
-  const limit  = Math.min(filters.limit  ?? 10, 100);
+  const limit = Math.min(filters.limit ?? 10, 100);
   const offset = filters.offset ?? 0;
 
   const [[countRow], [rows]] = await Promise.all([
-    pool.query<RowDataPacket[]>(`SELECT COUNT(*) AS count FROM approvals ${where}`, params),
-    pool.query<Approval[]>(`SELECT * FROM approvals ${where} ${order} LIMIT ? OFFSET ?`, [...params, limit, offset]),
+    pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS count FROM approvals ${where}`,
+      params,
+    ),
+    pool.query<Approval[]>(
+      `SELECT ap.*, u.name AS actioned_user_name FROM approvals ap LEFT JOIN users u ON ap.actioned_by = u.id ${where} ${order} LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
+    ),
   ]);
 
-  const total    = Number((countRow as RowDataPacket[])[0].count);
+  const total = Number((countRow as RowDataPacket[])[0].count);
   const approvals = (rows as Approval[]).map(toJSON);
   return { approvals, total, limit, offset };
 }
 
 // ── GET BY ID ─────────────────────────────────────────────────────────
-export async function getApprovalById(id: string): Promise<ApprovalJSON | null> {
+export async function getApprovalById(
+  id: string,
+): Promise<ApprovalJSON | null> {
   const [rows] = await pool.query<Approval[]>(
     "SELECT * FROM approvals WHERE id = ?",
     [id],
@@ -129,7 +161,11 @@ export async function approveApproval(
   actionedBy: string,
   content?: Record<string, unknown>,
 ): Promise<ApprovalJSON | null> {
-  const sets  = ["status = 'approved'", "actioned_at = NOW(3)", "actioned_by = ?"];
+  const sets = [
+    "status = 'approved'",
+    "actioned_at = NOW(3)",
+    "actioned_by = ?",
+  ];
   const params: unknown[] = [actionedBy];
 
   if (content) {
@@ -197,10 +233,13 @@ export async function rejectApproval(
 }
 
 // ── DEFER ─────────────────────────────────────────────────────────────
-export async function deferApproval(id: string): Promise<ApprovalJSON | null> {
+export async function deferApproval(
+  id: string,
+  actionedBy: string,
+): Promise<ApprovalJSON | null> {
   const [result] = await pool.query<ResultSetHeader>(
-    "UPDATE approvals SET status = 'deferred', actioned_at = NOW(3) WHERE id = ?",
-    [id],
+    "UPDATE approvals SET status = 'deferred', actioned_at = NOW(3), actioned_by = ? WHERE id = ?",
+    [actionedBy, id],
   );
   if (result.affectedRows === 0) return null;
   return getApprovalById(id);

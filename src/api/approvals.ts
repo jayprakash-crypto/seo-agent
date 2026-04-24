@@ -12,8 +12,11 @@ import cors from "cors";
 
 import { approvalsRouter } from "./routes/approvals.routes.js";
 import { alertsRouter } from "./routes/alerts.routes.js";
+import { usersRouter } from "./routes/users.routes.js";
+import { requireAuth } from "./middleware/auth.middleware.js";
 import { createApprovalsTable } from "./controllers/approvals.controller.js";
 import { createAlertsTable } from "./controllers/alerts.controller.js";
+import { createUsersTable } from "./controllers/users.controller.js";
 import pool from "./db.js";
 
 // ── App + Socket.io ───────────────────────────────────────────────────
@@ -22,23 +25,25 @@ const httpServer = createServer(app);
 
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: [process.env.DASHBOARD_URL ?? "http://localhost:3003", "http://localhost:3003"],
+    origin: [process.env.DASHBOARD_URL ?? "http://localhost:3001", "http://localhost:3001"],
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors({ origin: [process.env.DASHBOARD_URL ?? "http://localhost:3003", "http://localhost:3003"] }));
+app.use(cors({ origin: [process.env.DASHBOARD_URL ?? "http://localhost:3001", "http://localhost:3001"] }));
 app.use(express.json());
 
 // ── Routes ────────────────────────────────────────────────────────────
 app.use("/approvals", approvalsRouter(io));
-app.use("/alerts", alertsRouter(io));
+app.use("/alerts", requireAuth, alertsRouter(io));
+app.use("/users", usersRouter);
 
 // ── Health ────────────────────────────────────────────────────────────
 app.get("/health", async (_req: Request, res: Response) => {
   try {
     await pool.query("SELECT 1");
     res.json({
+      success: true,
       status: "ok",
       service: "approvals-api",
       db: "mysql",
@@ -46,7 +51,7 @@ app.get("/health", async (_req: Request, res: Response) => {
       uptime: process.uptime(),
     });
   } catch (err) {
-    res.status(503).json({ status: "error", db: String(err) });
+    res.status(503).json({ success: false, status: "error", db: String(err) });
   }
 });
 
@@ -54,11 +59,11 @@ app.get("/health", async (_req: Request, res: Response) => {
 app.post("/emit", (req: Request, res: Response) => {
   const { event, data } = req.body as { event?: string; data?: unknown };
   if (!event) {
-    res.status(400).json({ error: "event is required" });
+    res.status(400).json({ success: false, error: "event is required" });
     return;
   }
   io.emit(event, data ?? {});
-  res.json({ ok: true, event, clients: io.engine.clientsCount });
+  res.json({ success: true, ok: true, event, clients: io.engine.clientsCount });
 });
 
 // ── Socket.io ─────────────────────────────────────────────────────────
@@ -73,7 +78,7 @@ io.on("connection", (socket) => {
 const PORT = Number(process.env.PORT ?? 3002);
 
 if (process.env.NODE_ENV !== "test") {
-  Promise.all([createApprovalsTable(), createAlertsTable()])
+  Promise.all([createApprovalsTable(), createAlertsTable(), createUsersTable()])
     .then(() => {
       console.log("[db] tables ready");
       httpServer.listen(PORT, () =>

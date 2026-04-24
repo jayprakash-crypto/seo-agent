@@ -1,40 +1,50 @@
 "use client";
 
-import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getCookie } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [totp, setTotp] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const result = await signIn("credentials", {
-      password,
-      totp,
-      redirect: false,
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
     });
 
+    const data = await res.json();
     setLoading(false);
 
-    if (result?.error) {
-      setError("Invalid password or 2FA code. Try again.");
+    if (!data.success) {
+      setError(data.message ?? "Invalid email or password.");
     } else {
-      router.push("/");
+      document.cookie = `seo-token=${data.token}`;
+      router.push("/dashboard");
     }
   }
+
+  useEffect(() => {
+    const token = getCookie("seo-token");
+
+    if (token) {
+      router.push("/dashboard");
+    }
+  }, []);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
@@ -46,27 +56,23 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="totp">Authenticator Code</Label>
-              <Input
-                id="totp"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                placeholder="000000"
-                value={totp}
-                onChange={(e) => setTotp(e.target.value)}
                 required
               />
             </div>

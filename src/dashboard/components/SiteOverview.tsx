@@ -21,6 +21,7 @@ import {
   Tooltip,
 } from "recharts";
 import { SITES } from "@/lib/sites";
+import { proxyFetch } from "@/lib/api";
 
 interface SiteMetrics {
   site_id: number;
@@ -188,7 +189,7 @@ export default function SiteOverview() {
       const siteIds = Object.keys(SITES).map(Number);
       const results = await Promise.all(
         siteIds.map(async (id) => {
-          const res = await fetch(`/api/sites/${id}/overview`);
+          const res = await proxyFetch(`/api/sites/${id}/overview`);
           return res.json() as Promise<SiteMetrics>;
         }),
       );

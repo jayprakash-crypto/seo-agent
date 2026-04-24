@@ -1,12 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  isInitializeRequest,
-} from "@modelcontextprotocol/sdk/types.js";
 import { google } from "googleapis";
+
+import { SITES } from "../../sites_config.js"
 
 const SERVER_NAME = "cms-connector";
 const SERVER_VERSION = "1.0.0";
@@ -24,9 +18,7 @@ export function getGscAuth(siteId) {
 }
 
 export function getSiteUrl(siteId) {
-  const map = {
-    1: "https://lifecircle.in",
-  };
+  const map = SITES;
   const url = map[String(siteId)];
   if (!url) throw new Error(`Unknown site_id=${siteId}`);
   return url;
@@ -96,8 +88,6 @@ export async function getPage(siteId, pageUrl) {
       .replace(/^\/|\/$/g, "")
       .split("/")
       .pop() ?? "";
-
-  console.log("SLUG = ", slug);
 
   // Try pages first, then posts
   let wpPage = null;
@@ -245,7 +235,6 @@ export async function updatePageMeta(
   description,
   _extraFields,
 ) {
-  // ── PERMANENT PUBLISH GUARD ───────────────────────────────────────
   // update_page_meta MUST NEVER set post_status to 'publish'.
   if (
     _extraFields?.status === "publish" ||
@@ -299,7 +288,6 @@ export async function updatePageMeta(
   };
 }
 
-// ── Tool: create_approval_queue ───────────────────────────────────────
 export async function createApprovalQueue(items) {
   const apiUrl = process.env.BACKEND_API_URL ?? "http://localhost:3002";
   const url = `${apiUrl}/approvals`;
@@ -390,223 +378,6 @@ export async function getImpressionsVsCtr(siteId, days) {
     threshold: { min_impressions: 100, max_ctr: 0.03 },
     opportunities,
   };
-}
-
-// ── MCP Server factory ────────────────────────────────────────────────
-function createMcpServer() {
-  const s = new Server(
-    { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {} } },
-  );
-
-  s.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      {
-        name: "get_page",
-        description:
-          "Fetch a WordPress page's title, meta description, body HTML, JSON-LD schema, and last modified date.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            url: { type: "string", description: "Full URL of the page" },
-          },
-          required: ["site_id", "url"],
-        },
-      },
-      {
-        name: "list_pages",
-        description:
-          "Return a paginated list of published WordPress pages enriched with GSC impressions, clicks, CTR, and average position.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            limit: {
-              type: "number",
-              description: "Max pages to return (1–100, default 20)",
-            },
-            offset: {
-              type: "number",
-              description: "Pagination offset (default 0)",
-            },
-          },
-          required: ["site_id"],
-        },
-      },
-      {
-        name: "get_page_metrics",
-        description:
-          "Return GSC impressions, clicks, CTR, and average position for a specific page URL over the last 28 days.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            url: { type: "string", description: "Full URL of the page" },
-          },
-          required: ["site_id", "url"],
-        },
-      },
-      {
-        name: "update_page_meta",
-        description:
-          "Update a WordPress page's title and meta description. NEVER sets post status — the publish guard prevents status=publish from being sent.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            url: { type: "string", description: "Full URL of the page" },
-            title: { type: "string", description: "New page title" },
-            description: {
-              type: "string",
-              description: "New meta description",
-            },
-          },
-          required: ["site_id", "url", "title", "description"],
-        },
-      },
-      {
-        name: "get_impressions_vs_ctr",
-        description:
-          "Return pages where impressions > 100 but CTR < 3%, sorted by impressions descending. Identifies content improvement opportunities.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            site_id: { type: "number", description: "Site ID" },
-            days: {
-              type: "number",
-              description: "Lookback window in days (1–90)",
-            },
-          },
-          required: ["site_id", "days"],
-        },
-      },
-      {
-        name: "create_approval_queue",
-        description:
-          "Submit a list of items to the operator approval queue. Processes each item sequentially. Use when suggested changes require human review before publishing.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            items: {
-              type: "array",
-              description: "List of approval items to queue",
-              items: {
-                type: "object",
-                properties: {
-                  site_id: { type: "number", description: "Site ID" },
-                  module: {
-                    type: "string",
-                    description:
-                      "Module that generated the item, e.g. 'cms-connector'",
-                  },
-                  type: {
-                    type: "string",
-                    description:
-                      "Item type, e.g. 'meta_rewrite', 'gbp_post', 'review_response'",
-                  },
-                  priority: {
-                    type: "number",
-                    description:
-                      "Priority: 1=critical, 2=high, 3=medium (default 3)",
-                  },
-                  title: {
-                    type: "string",
-                    description:
-                      "Short human-readable title shown in the approval queue",
-                  },
-                  content: {
-                    type: "object",
-                    description: "Full payload — structure varies by type",
-                  },
-                  preview_url: {
-                    type: "string",
-                    description:
-                      "Optional URL to preview the page being changed",
-                  },
-                },
-                required: ["site_id", "module", "type", "title", "content"],
-              },
-            },
-          },
-          required: ["items"],
-        },
-      },
-    ],
-  }));
-
-  s.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const { name, arguments: args } = req.params;
-    try {
-      switch (name) {
-        case "get_page": {
-          console.log("========== GET PAGES ==========");
-          const result = await getPage(Number(args.site_id), args.url);
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "list_pages": {
-          console.log("========== LIST PAGES ==========");
-          const result = await listPages(
-            Number(args.site_id),
-            Number(args.limit ?? 20),
-            Number(args.offset ?? 0),
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "get_page_metrics": {
-          console.log("========== GET PAGE METRICS ==========");
-          const result = await getPageMetrics(Number(args.site_id), args.url);
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "update_page_meta": {
-          console.log("========== UPDATE PAGE META ==========");
-          // PUBLISH GUARD at handler level (belt-and-suspenders)
-          if (args.status === "publish" || args.post_status === "publish") {
-            throw new Error(
-              "PUBLISH GUARD: update_page_meta must never set post_status to 'publish'",
-            );
-          }
-          const result = await updatePageMeta(
-            Number(args.site_id),
-            args.url,
-            args.title,
-            args.description,
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "get_impressions_vs_ctr": {
-          const result = await getImpressionsVsCtr(
-            Number(args.site_id),
-            Number(args.days),
-          );
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        case "create_approval_queue": {
-          console.log("========== CREATE APPROVAL QUEUE ==========");
-          const items = args.items;
-          if (!Array.isArray(items) || items.length === 0) {
-            throw new Error(
-              "create_approval_queue requires a non-empty 'items' array",
-            );
-          }
-          const result = await createApprovalQueue(items);
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
-    } catch (error) {
-      console.error(`Error executing tool ${name}:`, error);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ error: String(error) }) },
-        ],
-        isError: true,
-      };
-    }
-  });
-
-  return s;
 }
 
 const getTop5PagesWithHighImpressionLowCtr = async (siteId) => {
