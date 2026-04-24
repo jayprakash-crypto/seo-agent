@@ -106,8 +106,9 @@ async function step2CmsConnector(client, siteId) {
   );
   const pages = await Promise.all(
     impressionsVsCtr.map(async (row, index) => {
-      const page = await getPage(siteId, row.url);
       console.log("Get PAGE Call Count : ", count++);
+      await sleep(waitMs);
+      const page = await getPage(siteId, row.url);
       return { ...page, ...row };
     }),
   );
