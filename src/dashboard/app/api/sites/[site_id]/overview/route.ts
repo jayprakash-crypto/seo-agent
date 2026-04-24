@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
-import { getCookie } from "@/lib/utils";
 
 function getAuth(siteId: string) {
   const raw = process.env[`GSC_OAUTH_SITE_${siteId}`];
@@ -23,8 +22,8 @@ type Params = { params: Promise<{ site_id: string }> };
 export async function GET(req: NextRequest, { params }: Params) {
   const { site_id } = await params;
   const API = process.env.APPROVALS_API_URL ?? "http://localhost:3002";
-  const cookie = req.headers.get("cookie");
-  const token = getCookie("seo-token", cookie || "");
+  console.log("APIS ", API);
+  
 
   let open_alerts = 0;
   try {
@@ -32,7 +31,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       `${API}/alerts?status=open&site_id=${site_id}`,
       {
         cache: "no-store",
-        headers: { authorization: `Bearer ${token}` },
+        headers: req.headers,
       } as RequestInit,
     );
     if (!alertsRes.ok) throw new Error(`alerts API ${alertsRes.status}`);

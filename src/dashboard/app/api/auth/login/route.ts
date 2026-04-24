@@ -28,14 +28,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const res = NextResponse.json({ success: true, user: data.user });
-  res.cookies.set("seo-token", data.token, {
-    path: "/",
-    maxAge: 8 * 60 * 60,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    // not httpOnly — client-side fetch wrapper reads it for Bearer auth
-  });
-
+  const res = NextResponse.json(data);
   return res;
 }

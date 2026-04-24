@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { proxyFetch } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface Approval {
@@ -80,7 +81,7 @@ export default function AllApprovals() {
       });
       if (statusFilter !== "all") params.set("status", statusFilter);
 
-      const res = await fetch(`/api/approvals?${params}`);
+      const res = await proxyFetch(`/api/approvals?${params}`);
       const json = (await res.json()) as PageResult;
 
       setData(json);

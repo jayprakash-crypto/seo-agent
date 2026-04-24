@@ -15,7 +15,7 @@ import {
   rejectApproval,
   deferApproval,
 } from "../controllers/approvals.controller.js";
-import { AuthRequest } from "../middleware/auth.middleware.js";
+import { AuthRequest, requireAuth } from "../middleware/auth.middleware.js";
 
 // Request body shape for POST /approvals (all strings from JSON body)
 interface CreateApprovalBody {
@@ -71,7 +71,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
   });
 
   // GET /approvals
-  router.get("/", async (req: Request, res: Response) => {
+  router.get("/", requireAuth, async (req: Request, res: Response) => {
     const { status, sort, site_id, limit, offset } = req.query as Record<
       string,
       string
@@ -92,7 +92,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
   });
 
   // GET /approvals/:id
-  router.get("/:id", async (req: Request, res: Response) => {
+  router.get("/:id", requireAuth, async (req: Request, res: Response) => {
     try {
       const approval = await getApprovalById(req.params.id);
       if (!approval) {
@@ -107,7 +107,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
   });
 
   // POST /approvals/:id/approve
-  router.post("/:id/approve", async (req: Request, res: Response) => {
+  router.post("/:id/approve", requireAuth, async (req: Request, res: Response) => {
     const { sub } = (req as AuthRequest).user!;
     const { content } = req.body as {
       content?: Record<string, unknown>;
@@ -131,7 +131,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
   });
 
   // POST /approvals/:id/reject
-  router.post("/:id/reject", async (req: Request, res: Response) => {
+  router.post("/:id/reject", requireAuth, async (req: Request, res: Response) => {
     const { sub } = (req as AuthRequest).user!;
     const { reason } = req.body as {
       reason?: string;
@@ -162,7 +162,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
   });
 
   // POST /approvals/:id/defer
-  router.post("/:id/defer", async (req: Request, res: Response) => {
+  router.post("/:id/defer", requireAuth, async (req: Request, res: Response) => {
     try {
       const { sub } = (req as AuthRequest).user!;
       const approval = await deferApproval(req.params.id, sub ?? "operator");

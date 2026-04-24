@@ -12,6 +12,9 @@ import ConfigManager from "@/components/ConfigManager";
 import PageHeader from "@/components/PageHeader";
 
 import { UserContext as UserProvider } from "@/providers/users.provider";
+import { proxyFetch } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { getCookie } from "@/lib/utils";
 
 interface User {
   created_at: string;
@@ -22,21 +25,38 @@ interface User {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+
+  const [isLoading, setIsLoading] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
   const [user, setUser] = useState<User | null>();
 
   const fetchUser = async () => {
     try {
-      const res = await fetch("/api/user");
+      const res = await proxyFetch("/api/user");
       const json = await res.json();
 
       setUser(json.user ?? {});
-    } catch (error) {}
+    } catch (error) {
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
+    const token = getCookie("seo-token");
+
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
     fetchUser();
   }, []);
+
+  if (isLoading) {
+    return <div className="h-screen grid place-items-center">Loading...</div>;
+  }
 
   return (
     <UserProvider value={user}>

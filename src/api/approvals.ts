@@ -34,7 +34,7 @@ app.use(cors({ origin: [process.env.DASHBOARD_URL ?? "http://localhost:3001", "h
 app.use(express.json());
 
 // ── Routes ────────────────────────────────────────────────────────────
-app.use("/approvals", requireAuth, approvalsRouter(io));
+app.use("/approvals", approvalsRouter(io));
 app.use("/alerts", requireAuth, alertsRouter(io));
 app.use("/users", usersRouter);
 
