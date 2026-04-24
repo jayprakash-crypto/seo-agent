@@ -30,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { UserContext } from "@/providers/users.provider";
+import { proxyFetch } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface Approval {
@@ -197,7 +198,7 @@ function ApprovalCard({
 
   async function doApprove(content?: Record<string, unknown>) {
     setLoading(true);
-    await fetch(`/api/approvals/${approval.id}/approve`, {
+    await proxyFetch(`/api/approvals/${approval.id}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -211,7 +212,7 @@ function ApprovalCard({
 
   async function doReject(reason: string) {
     setLoading(true);
-    await fetch(`/api/approvals/${approval.id}/reject`, {
+    await proxyFetch(`/api/approvals/${approval.id}/reject`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason }),
@@ -223,7 +224,7 @@ function ApprovalCard({
 
   async function doDefer() {
     setLoading(true);
-    await fetch(`/api/approvals/${approval.id}/defer`, {
+    await proxyFetch(`/api/approvals/${approval.id}/defer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -331,7 +332,7 @@ export default function ApprovalQueue({
 
   const fetchApprovals = useCallback(async () => {
     try {
-      const res = await fetch(`/api/approvals?status=pending&sort=priority`);
+      const res = await proxyFetch(`/api/approvals?status=pending&sort=priority`);
       const data = (await res.json()) as { approvals: Approval[] };
       setApprovals(data.approvals ?? []);
       onCountChange?.(data.approvals?.length ?? 0);

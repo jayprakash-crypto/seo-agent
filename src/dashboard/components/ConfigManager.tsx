@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { proxyFetch } from "@/lib/api";
 
 // ── Tab 1: Add City ───────────────────────────────────────────────────
 function AddCityTab() {
@@ -33,7 +34,7 @@ function AddCityTab() {
     e.preventDefault();
     setStatus("saving");
     try {
-      const res = await fetch("/api/config/cities", {
+      const res = await proxyFetch("/api/config/cities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -139,7 +140,7 @@ function AddWebsiteTab() {
     e.preventDefault();
     setStatus("saving");
     try {
-      const res = await fetch("/api/config/sites", {
+      const res = await proxyFetch("/api/config/sites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -273,7 +274,7 @@ function EditConfigTab() {
   async function handleSave() {
     setStatus("saving");
     try {
-      const res = await fetch("/api/config", {
+      const res = await proxyFetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),

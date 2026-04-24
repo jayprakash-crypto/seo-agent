@@ -1,4 +1,22 @@
+"use client";
+
+import { getCookie } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
 export default function DashboardPage() {
+  const router = useRouter();
+  
+  useEffect(() => {
+    const token = getCookie("seo-token");
+
+    if (token) {
+      router.push("/dashboard");
+    } else {
+      router.push("/login");
+    }
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col">
       {/* Main content */}

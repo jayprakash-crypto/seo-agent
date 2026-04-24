@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getCookie } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,9 +33,18 @@ export default function LoginPage() {
     if (!data.success) {
       setError(data.message ?? "Invalid email or password.");
     } else {
+      document.cookie = `seo-token=${data.token}`;
       router.push("/dashboard");
     }
   }
+
+  useEffect(() => {
+    const token = getCookie("seo-token");
+
+    if (token) {
+      router.push("/dashboard");
+    }
+  }, []);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">

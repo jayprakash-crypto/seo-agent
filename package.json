@@ -4,9 +4,6 @@
   "description": "Autonomous SEO platform — 18 MCP servers + orchestrators + dashboard",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "src/dashboard"
-  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
