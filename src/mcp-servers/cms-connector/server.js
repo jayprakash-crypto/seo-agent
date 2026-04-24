@@ -388,7 +388,7 @@ export async function getImpressionsVsCtr(siteId, days) {
 const getTop5PagesWithHighImpressionLowCtr = async (siteId) => {
   let pages = await getImpressionsVsCtr(siteId, 28);
   pages = pages.opportunities.sort((a, b) => b.impressions - a.impressions);
-  return pages.slice(0, 1);
+  return pages.slice(0, 2);
 };
 
 export { getTop5PagesWithHighImpressionLowCtr };
