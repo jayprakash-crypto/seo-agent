@@ -52,7 +52,6 @@ export async function wpFetch(siteId, method, endpoint, body) {
   if (body) options.body = JSON.stringify(body);
   console.log("============= WP Getting Page ***************\n", url);
   const res = await fetch(url, options);
-  console.log("WP Header ", res);
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     const text = await res.text();
@@ -390,7 +389,7 @@ export async function getImpressionsVsCtr(siteId, days) {
 const getTop5PagesWithHighImpressionLowCtr = async (siteId) => {
   let pages = await getImpressionsVsCtr(siteId, 28);
   pages = pages.opportunities.sort((a, b) => b.impressions - a.impressions);
-  return pages.slice(0, 5);
+  return pages.slice(0, 2);
 };
 
 export { getTop5PagesWithHighImpressionLowCtr };
