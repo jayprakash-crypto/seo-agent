@@ -46,7 +46,6 @@ export async function wpFetch(siteId, method, endpoint, body) {
     headers: {
       Authorization: authHeader,
       "Content-Type": "application/json",
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.2420.81',
     },
   };
   if (body) options.body = JSON.stringify(body);
@@ -389,7 +388,7 @@ export async function getImpressionsVsCtr(siteId, days) {
 const getTop5PagesWithHighImpressionLowCtr = async (siteId) => {
   let pages = await getImpressionsVsCtr(siteId, 28);
   pages = pages.opportunities.sort((a, b) => b.impressions - a.impressions);
-  return pages.slice(0, 2);
+  return pages.slice(0, 1);
 };
 
 export { getTop5PagesWithHighImpressionLowCtr };
