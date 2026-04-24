@@ -100,6 +100,7 @@ export async function getPage(siteId, pageUrl, count) {
       siteId,
       "GET",
       `/${postType}?slug=${encodeURIComponent(slug)}&_fields=id,title,content,modified,link,rank_math_meta,meta`,
+      undefined,
       count
     );
     if (results.length > 0) {
