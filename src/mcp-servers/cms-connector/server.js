@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 
-import { SITES } from "../../sites_config.js"
+import { SITES } from "../../sites_config.js";
 
 const SERVER_NAME = "cms-connector";
 const SERVER_VERSION = "1.0.0";
@@ -51,6 +51,7 @@ export async function wpFetch(siteId, method, endpoint, body) {
   if (body) options.body = JSON.stringify(body);
   console.log("============= WP Getting Page ***************\n", url);
   const res = await fetch(url, options);
+  console.log("WP Header ", res.headers.get("content-type"));
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     const text = await res.text();
@@ -362,7 +363,12 @@ export async function getImpressionsVsCtr(siteId, days) {
 
   // Pages with high impressions but low CTR = content improvement opportunities
   const opportunities = (response.data.rows ?? [])
-    .filter((row) => (row.impressions ?? 0) > 100 && (row.ctr ?? 0) < 0.03 && row.keys?.[0] !== `${siteUrl}/`)
+    .filter(
+      (row) =>
+        (row.impressions ?? 0) > 100 &&
+        (row.ctr ?? 0) < 0.03 &&
+        row.keys?.[0] !== `${siteUrl}/`,
+    )
     .map((row) => ({
       url: row.keys?.[0] ?? "",
       impressions: row.impressions ?? 0,

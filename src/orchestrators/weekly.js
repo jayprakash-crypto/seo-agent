@@ -146,26 +146,26 @@ async function step2CmsConnector(client, siteId) {
     return { opportunities: [], summary: text };
   }
 
-  await createApprovalQueue(
-    parsed.opportunities.map((opp) => {
-      return {
-        site_id: siteId,
-        module: "cms-connector",
-        type: "meta_rewrite",
-        priority: opp.priority,
-        title: opp.current_title,
-        content: {
-          url: opp.url,
-          current_title: opp.current_title,
-          current_description: opp.current_description,
-          suggested_title: opp.suggested_title,
-          suggested_description: opp.suggested_description,
-          reasoning: opp.reasoning,
-        },
-        preview_url: opp.url,
-      };
-    }),
-  );
+  // await createApprovalQueue(
+  //   parsed.opportunities.map((opp) => {
+  //     return {
+  //       site_id: siteId,
+  //       module: "cms-connector",
+  //       type: "meta_rewrite",
+  //       priority: opp.priority,
+  //       title: opp.current_title,
+  //       content: {
+  //         url: opp.url,
+  //         current_title: opp.current_title,
+  //         current_description: opp.current_description,
+  //         suggested_title: opp.suggested_title,
+  //         suggested_description: opp.suggested_description,
+  //         reasoning: opp.reasoning,
+  //       },
+  //       preview_url: opp.url,
+  //     };
+  //   }),
+  // );
 
   console.log(`[step2] Done`);
   return parsed;
@@ -326,17 +326,17 @@ Return ONLY a JSON object with keys:
 
   const parsed = extractJson(text);
 
-  await writeKeywordRankingsToSheet(siteId, keywords.rankings);
+  // await writeKeywordRankingsToSheet(siteId, keywords.rankings);
 
-  await writeRecommendationsToSheet(siteId, parsed.recommendations);
+  // await writeRecommendationsToSheet(siteId, parsed.recommendations);
 
-  await postMessageToSlack(siteId, {
-    rankings: keywords.rankings || [],
-    cmsOpportunities: (cmsData || {}).opportunities || [],
-    schemaGaps: (schemaData || {}).pages || [],
-    competitorsAlerts: competitorData,
-    summary: parsed.summary || "No summary",
-  });
+  // await postMessageToSlack(siteId, {
+  //   rankings: keywords.rankings || [],
+  //   cmsOpportunities: (cmsData || {}).opportunities || [],
+  //   schemaGaps: (schemaData || {}).pages || [],
+  //   competitorsAlerts: competitorData,
+  //   summary: parsed.summary || "No summary",
+  // });
 
   console.log(`[step5] Done`);
 }
