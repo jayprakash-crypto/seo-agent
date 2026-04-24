@@ -38,7 +38,7 @@ export function getWpAuth(siteId) {
 }
 
 // ── WP REST API fetch helper ──────────────────────────────────────────
-export async function wpFetch(siteId, method, endpoint, body, count) {
+export async function wpFetch(siteId, method, endpoint, body) {
   const { baseUrl, authHeader } = getWpAuth(siteId);
   const url = `${baseUrl}${endpoint}`;
   const options = {
@@ -49,7 +49,7 @@ export async function wpFetch(siteId, method, endpoint, body, count) {
     },
   };
   if (body) options.body = JSON.stringify(body);
-  console.log("============= WP Getting Page ***************\n", count, url);
+  console.log("============= WP Getting Page ***************\n", url);
   const res = await fetch(url, options);
   console.log("WP Header ", res.headers.get("content-type"));
   const contentType = res.headers.get("content-type") ?? "";
@@ -81,7 +81,7 @@ function dateRange(days) {
 }
 
 // ── Tool: get_page ────────────────────────────────────────────────────
-export async function getPage(siteId, pageUrl, count) {
+export async function getPage(siteId, pageUrl) {
   // Extract slug from URL path
   const parsed = new URL(pageUrl);
   const slug =
@@ -89,8 +89,6 @@ export async function getPage(siteId, pageUrl, count) {
       .replace(/^\/|\/$/g, "")
       .split("/")
       .pop() ?? "";
-
-  console.log("GET PAGE COUNT ", count);
 
   // Try pages first, then posts
   let wpPage = null;
@@ -100,8 +98,6 @@ export async function getPage(siteId, pageUrl, count) {
       siteId,
       "GET",
       `/${postType}?slug=${encodeURIComponent(slug)}&_fields=id,title,content,modified,link,rank_math_meta,meta`,
-      undefined,
-      count
     );
     if (results.length > 0) {
       wpPage = results[0];

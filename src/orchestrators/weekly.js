@@ -95,7 +95,7 @@ async function step1KeywordRankings(client, siteId) {
     summary: "",
   };
 }
-
+let count = 1;
 // ── Step 2: CMS Connector ─────────────────────────────────────────────
 async function step2CmsConnector(client, siteId) {
   console.log(`\n[step2] Analyzing low-CTR pages for site_id=${siteId}...`);
@@ -106,7 +106,8 @@ async function step2CmsConnector(client, siteId) {
   );
   const pages = await Promise.all(
     impressionsVsCtr.map(async (row, index) => {
-      const page = await getPage(siteId, row.url, index+1);
+      const page = await getPage(siteId, row.url);
+      console.log("Get PAGE Call Count : ", count++);
       return { ...page, ...row };
     }),
   );
