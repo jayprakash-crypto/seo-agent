@@ -21,6 +21,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { proxyFetch } from "@/lib/api";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { ScrollArea } from "./ui/scroll-area";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface Approval {
@@ -31,6 +38,8 @@ interface Approval {
   priority: number;
   title: string;
   status: "pending" | "approved" | "rejected" | "deferred";
+  content: Object;
+  preview_url?: string;
   created_at: string;
   actioned_at: string;
   actioned_by: string | null;
@@ -180,8 +189,8 @@ export default function AllApprovals() {
               <TableHead>Actioned On</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {loading ? (
+          {loading ? (
+            <TableBody>
               <TableRow>
                 <TableCell
                   colSpan={8}
@@ -190,7 +199,9 @@ export default function AllApprovals() {
                   Loading…
                 </TableCell>
               </TableRow>
-            ) : !data || data.approvals.length === 0 ? (
+            </TableBody>
+          ) : !data || data.approvals.length === 0 ? (
+            <TableBody>
               <TableRow>
                 <TableCell
                   colSpan={8}
@@ -199,51 +210,16 @@ export default function AllApprovals() {
                   No approvals found.
                 </TableCell>
               </TableRow>
-            ) : (
-              data?.approvals?.map((a, idx) => (
-                <TableRow key={a.id}>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {offset + idx + 1}
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate font-medium text-sm">
-                    {a.title}
-                  </TableCell>
-                  <TableCell className="hidden text-xs sm:table-cell">
-                    {getSiteName(a.site_id)}
-                  </TableCell>
-                  <TableCell className="hidden text-xs md:table-cell">
-                    {a.module}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs">
-                      {PRIORITY_LABELS[a.priority] ?? "—"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={STATUS_VARIANTS[a.status]}
-                      className="text-xs capitalize"
-                    >
-                      {a.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {a.reject_reason ?? "—"}
-                  </TableCell>
-
-                  <TableCell className="text-xs text-muted-foreground">
-                    {a.actioned_user_name ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {new Date(a.actioned_at).toLocaleDateString()}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
+            </TableBody>
+          ) : (
+            data?.approvals?.map((a, idx) => (
+              <CollapsibleRow
+                key={a.id}
+                rowData={a}
+                rowCount={offset + idx + 1}
+              />
+            ))
+          )}
         </Table>
       </div>
 
@@ -278,3 +254,114 @@ export default function AllApprovals() {
     </div>
   );
 }
+
+const PRIORITY_MAP: Record<
+  number,
+  {
+    label: string;
+    variant: "destructive" | "default" | "secondary" | "outline";
+  }
+> = {
+  1: { label: "Critical", variant: "destructive" },
+  2: { label: "High", variant: "default" },
+  3: { label: "Medium", variant: "secondary" },
+};
+
+const CollapsibleRow = ({
+  rowData,
+  rowCount,
+}: {
+  rowData: Approval;
+  rowCount: number;
+}) => {
+  const priority = PRIORITY_MAP[rowData.priority] ?? PRIORITY_MAP[3];
+  const previewText = JSON.stringify(rowData.content, null, 2);
+
+  return (
+    <Collapsible render={<TableBody />}>
+      <CollapsibleTrigger nativeButton={false} render={<TableRow />}>
+        <TableCell className="text-xs text-muted-foreground">
+          {rowCount}
+        </TableCell>
+        <TableCell className="max-w-xs truncate font-medium text-sm">
+          {rowData.title}
+        </TableCell>
+
+        <TableCell className="hidden text-xs sm:table-cell">
+          {getSiteName(rowData.site_id)}
+        </TableCell>
+        <TableCell className="hidden text-xs md:table-cell">
+          {rowData.module}
+        </TableCell>
+        <TableCell>
+          <Badge variant="outline" className="text-xs">
+            {PRIORITY_LABELS[rowData.priority] ?? "—"}
+          </Badge>
+        </TableCell>
+        <TableCell>
+          <Badge
+            variant={STATUS_VARIANTS[rowData.status]}
+            className="text-xs capitalize"
+          >
+            {rowData.status}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {new Date(rowData.created_at).toLocaleDateString()}
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {rowData.reject_reason ?? "—"}
+        </TableCell>
+
+        <TableCell className="text-xs text-muted-foreground">
+          {rowData.actioned_user_name ?? "—"}
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {new Date(rowData.actioned_at).toLocaleDateString()}
+        </TableCell>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent render={<TableRow />}>
+        <TableCell colSpan={8} className="p-0">
+          <div className="p-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant={priority.variant}>{priority.label}</Badge>
+                  <Badge variant="outline">{rowData.module}</Badge>
+                  <Badge variant="secondary">{rowData.type}</Badge>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {getSiteName(rowData.site_id)} ·{" "}
+                    {new Date(rowData.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <CardTitle className="mt-1 text-base">
+                  {rowData.title}
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent>
+                <ScrollArea className="h-32 rounded border bg-muted p-2">
+                  <pre className="whitespace-pre-wrap font-mono text-xs">
+                    {previewText}
+                    {/* {JSON.stringify(rowData.content).length > 400 ? "…" : ""} */}
+                  </pre>
+                </ScrollArea>
+                {rowData.preview_url && (
+                  <a
+                    href={rowData.preview_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 block text-xs text-blue-600 hover:underline"
+                  >
+                    Preview →
+                  </a>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TableCell>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+};
