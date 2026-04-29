@@ -6,9 +6,20 @@ import { SITES } from "../../sites_config.js";
 const SERVER_NAME = "reporting";
 const SERVER_VERSION = "1.0.0";
 
-const sites = SITES;
+const sites: Record<string, string> = SITES;
 
-export async function callSlackApi(endpoint, token, body) {
+type SlackResponse = {
+  ok: boolean;
+  ts?: string;
+  channel?: string;
+  error?: string;
+};
+
+export async function callSlackApi(
+  endpoint: string,
+  token: string,
+  body: object,
+): Promise<SlackResponse> {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const req = https.request(
@@ -41,7 +52,7 @@ export async function callSlackApi(endpoint, token, body) {
 }
 
 // ── Sheets helpers ─────────────────────────────────────────────────────
-function getSheetsClient(siteId) {
+function getSheetsClient(siteId: number) {
   const envKey = `GSC_OAUTH_SITE_${siteId}`;
   const raw = process.env[envKey];
   if (!raw) throw new Error(`Missing env var ${envKey} for site_id=${siteId}`);
@@ -62,7 +73,11 @@ function getSpreadsheetId() {
 
 // ── Tool implementations ──────────────────────────────────────────────
 
-export async function postSlackMessage(message, blocks, channel) {
+export async function postSlackMessage(
+  message: string,
+  blocks?: object[],
+  channel?: string,
+) {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) throw new Error("Missing env var SLACK_BOT_TOKEN");
   const ch = channel ?? process.env.SLACK_CHANNEL_ID;
@@ -71,7 +86,7 @@ export async function postSlackMessage(message, blocks, channel) {
   if (!ch) throw new Error("Missing env var SLACK_CHANNEL_ID");
 
   console.log("========== Slack Message **********");
-  const body = { channel: ch, text: message };
+  const body: Record<string, unknown> = { channel: ch, text: message };
   if (blocks) body.blocks = blocks;
 
   console.log("========== Calling Slack Post API **********");
@@ -83,15 +98,15 @@ export async function postSlackMessage(message, blocks, channel) {
 }
 
 // Slack section text is capped at 3000 chars — truncate with a safe margin
-function slackTrunc(text, max = 2950) {
+function slackTrunc(text: string, max = 2950): string {
   return text.length <= max ? text : text.slice(0, max - 3) + "...";
 }
 
-function sectionBlock(text) {
+function sectionBlock(text: string) {
   return { type: "section", text: { type: "mrkdwn", text: slackTrunc(text) } };
 }
 
-export function createWeeklyDigest(siteId, data) {
+export function createWeeklyDigest(siteId: number, data: Record<string, any>) {
   const today = new Date().toISOString().split("T")[0];
   const { rankings, summary, cmsOpportunities, schemaGaps, competitorsAlerts } =
     data || {};
@@ -105,12 +120,12 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
   console.log("========== Rankings Processed **********");
 
   // Build schema gaps section
-  const gaps = (schemaGaps ?? []).filter((g) => g.has_gaps);
+  const gaps = (schemaGaps ?? []).filter((g: any) => g.has_gaps);
   const schemaLines = gaps.length
     ? gaps
         .slice(0, 10)
         .map(
-          (g) =>
+          (g: any) =>
             `• *${g.url}* (${g.page_type})\n    Missing: ${g.missing_types.join(", ")}`,
         )
         .join("\n")
@@ -121,13 +136,13 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
   const competitorsLines = competitors.length
     ? competitors
         .slice(0, 5)
-        .map((competitor, index) => {
+        .map((competitor: any, index: number) => {
           let text = `${index + 1}. ${competitor.competitor_domain}: \n`;
 
           if (competitor.keywordGaps.length === 0) {
             text += "    No keyword gaps identified.";
           } else {
-            competitor.keywordGaps.map((gap) => {
+            competitor.keywordGaps.map((gap: any) => {
               text += `    • *${gap.keyword}* — competitor pos ${gap.competitor_position}, vol ${gap.competitor_volume.toLocaleString()}\n`;
             });
           }
@@ -184,10 +199,15 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
     date: today,
     blocks,
     fallback_text: `Weekly SEO Report — Site ${sites[String(siteId)] ?? `Site ${siteId}`} — ${today}`,
+    message: "",
   };
 }
 
-export async function writeToSheet(siteId, tabName, rows) {
+export async function writeToSheet(
+  siteId: number,
+  tabName: string,
+  rows: unknown[][],
+) {
   console.log("============= Sheets GSC Auth *************** site_id:", siteId);
   const sheets = getSheetsClient(siteId);
   const spreadsheetId = getSpreadsheetId();
@@ -209,10 +229,10 @@ export async function writeToSheet(siteId, tabName, rows) {
 }
 
 export async function logRecommendation(
-  siteId,
-  module,
-  recommendation,
-  outcome,
+  siteId: number,
+  module: string,
+  recommendation: string,
+  outcome: string,
 ) {
   const VALID_OUTCOMES = ["pending", "accepted", "rejected", "successful"];
   if (!VALID_OUTCOMES.includes(outcome)) {
@@ -223,7 +243,10 @@ export async function logRecommendation(
   return writeToSheet(siteId, "Recommendation Outcomes", rows);
 }
 
-const postMessageToSlack = async (site_id, data) => {
+const postMessageToSlack = async (
+  site_id: number,
+  data: Record<string, any>,
+) => {
   const messageData = createWeeklyDigest(site_id, data);
 
   const { message = "", blocks = [], fallback_text } = messageData;
@@ -231,7 +254,10 @@ const postMessageToSlack = async (site_id, data) => {
   return await postSlackMessage(message, blocks);
 };
 
-const writeKeywordRankingsToSheet = async (site_id, rankings) => {
+const writeKeywordRankingsToSheet = async (
+  site_id: number,
+  rankings: Array<Record<string, any>>,
+) => {
   const rows = [
     ["", "", "", "", "", ""],
     ...rankings.map((item) => [
@@ -247,7 +273,10 @@ const writeKeywordRankingsToSheet = async (site_id, rankings) => {
   return await writeToSheet(site_id, "Rankings", rows);
 };
 
-const writeRecommendationsToSheet = async (site_id, recommendations) => {
+const writeRecommendationsToSheet = async (
+  site_id: number,
+  recommendations: Array<Record<string, any>>,
+) => {
   const rows = [
     ["", "", "", "", ""],
     ...recommendations.map((item) => [

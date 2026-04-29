@@ -6,7 +6,7 @@ const SERVER_NAME = "keyword-tracker";
 const SERVER_VERSION = "1.0.0";
 
 // ── GSC Auth helper ────────────────────────────────────────────────────
-export function getGscAuth(siteId) {
+export function getGscAuth(siteId: number | string) {
   const envKey = `GSC_OAUTH_SITE_${siteId}`;
   const raw = process.env[envKey];
   if (!raw) {
@@ -20,14 +20,14 @@ export function getGscAuth(siteId) {
   return auth;
 }
 
-export function getSiteUrl(siteId) {
-  const map = SITES;
+export function getSiteUrl(siteId: number | string): string {
+  const map: Record<string, string> = SITES;
   const url = map[String(siteId)];
   if (!url) throw new Error(`Unknown site_id=${siteId}`);
   return url;
 }
 
-export function validateSiteId(siteId) {
+export function validateSiteId(siteId: unknown): number {
   const id = Number(siteId);
   if (!Number.isInteger(id) || id < 1) {
     throw new Error(`Invalid site_id: ${siteId}. Must be a positive integer.`);
@@ -37,7 +37,7 @@ export function validateSiteId(siteId) {
 
 // ── Tool implementations ──────────────────────────────────────────────
 
-export async function getRankings(siteId, keywords) {
+export async function getRankings(siteId: number, keywords: string[]) {
   if (!Array.isArray(keywords) || keywords.length === 0) {
     throw new Error("keywords must be a non-empty array");
   }
@@ -54,7 +54,7 @@ export async function getRankings(siteId, keywords) {
   const startDate = new Date();
   startDate.setDate(endDate.getDate() - 28);
 
-  const fmt = (d) => d.toISOString().split("T")[0];
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
 
   console.log("============= Ranking GSC Search Query ***************");
   const results = await Promise.all(
@@ -94,7 +94,11 @@ export async function getRankings(siteId, keywords) {
   return { site_id: siteId, site_url: siteUrl, rankings: results };
 }
 
-export async function getRankingHistory(siteId, keyword, days) {
+export async function getRankingHistory(
+  siteId: number,
+  keyword: string,
+  days: number,
+) {
   if (!keyword || typeof keyword !== "string") {
     throw new Error("keyword must be a non-empty string");
   }
@@ -114,7 +118,7 @@ export async function getRankingHistory(siteId, keyword, days) {
   const startDate = new Date();
   startDate.setDate(endDate.getDate() - days);
 
-  const fmt = (d) => d.toISOString().split("T")[0];
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
 
   console.log(
     "============= Ranking History GSC Search Query *************** site_id:",
@@ -154,7 +158,11 @@ export async function getRankingHistory(siteId, keyword, days) {
   return { site_id: siteId, site_url: siteUrl, keyword, days, history };
 }
 
-export async function getTopMovers(siteId, threshold, direction) {
+export async function getTopMovers(
+  siteId: number,
+  threshold: number,
+  direction: "up" | "down" | "both",
+) {
   if (typeof threshold !== "number" || threshold <= 0) {
     throw new Error("threshold must be a positive number");
   }
@@ -167,7 +175,7 @@ export async function getTopMovers(siteId, threshold, direction) {
   const siteUrl = getSiteUrl(siteId);
   const searchConsole = google.searchconsole({ version: "v1", auth });
 
-  const fmt = (d) => d.toISOString().split("T")[0];
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
 
   // Current period: last 7 days
   const endCurrent = new Date();
@@ -249,7 +257,7 @@ export async function getTopMovers(siteId, threshold, direction) {
   };
 }
 
-export async function getRankVelocity(siteId, keyword, windowDays) {
+export async function getRankVelocity(siteId: number, keyword: string, windowDays: number) {
   if (!keyword || typeof keyword !== "string") {
     throw new Error("keyword must be a non-empty string");
   }
@@ -274,7 +282,7 @@ export async function getRankVelocity(siteId, keyword, windowDays) {
 
   // Simple linear regression over position values
   const n = points.length;
-  const positions = points.map((p) => p.position);
+  const positions = points.map((p) => p.position as number);
 
   // Use index as x-axis (0 = oldest, n-1 = newest)
   const sumX = (n * (n - 1)) / 2;
@@ -305,7 +313,7 @@ export async function getRankVelocity(siteId, keyword, windowDays) {
   };
 }
 
-const getKeywordRankings = async (site_id, keywords) => {
+const getKeywordRankings = async (site_id: number, keywords: string[]) => {
   const siteId = validateSiteId(site_id);
 
   if (!Array.isArray(keywords)) throw new Error("keywords must be an array");

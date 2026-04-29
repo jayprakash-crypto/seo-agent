@@ -1,10 +1,10 @@
 import express from "express";
 
-import keywordTrackerServer from "./mcp-servers/keyword-tracker/server.js";
-import competitorIntelServer from "./mcp-servers/competitor-intel/server.js";
-import reportingServer from "./mcp-servers/reporting/server.js";
-import cmsConnectorServer from "./mcp-servers/cms-connector/server.js";
-import schemaManagerServer from "./mcp-servers/schema-manager/server.js";
+import keywordTrackerServer from "./api/mcp-servers/keyword-tracker/server.js";
+import competitorIntelServer from "./api/mcp-servers/competitor-intel/server.js";
+import reportingServer from "./api/mcp-servers/reporting/server.js";
+import cmsConnectorServer from "./api/mcp-servers/cms-connector/server.js";
+import schemaManagerServer from "./api/mcp-servers/schema-manager/server.js";
 
 const app = express();
 

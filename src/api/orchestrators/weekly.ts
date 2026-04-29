@@ -1,5 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import * as dotenv from "dotenv";
+import {
+  BetaMessage,
+  MessageCreateParamsNonStreaming,
+} from "@anthropic-ai/sdk/resources/beta.js";
 
 import {
   KEYWORDS as keywords,
@@ -38,9 +42,9 @@ const MAX_RETRIES = 3;
 const RETRY_BACKOFF = [2000, 5000, 10000]; // milliseconds between retries
 
 // ── Helper ────────────────────────────────────────────────────────────
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function extractJson(text) {
+function extractJson(text: string) {
   try {
     return JSON.parse(text);
   } catch (e) {
@@ -58,14 +62,18 @@ function extractJson(text) {
 }
 
 // ── Retry helper ──────────────────────────────────────────────────────
-async function callWithRetry(client, label, params) {
-  let lastExc = new Error("No attempts made");
+async function callWithRetry(
+  client: Anthropic,
+  label: string,
+  params: MessageCreateParamsNonStreaming,
+): Promise<BetaMessage> {
+  let lastExc: Error = new Error("No attempts made");
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       return await client.beta.messages.create(params);
-    } catch (exc) {
-      lastExc = exc;
+    } catch (exc: any) {
+      lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
         const waitMs = RETRY_BACKOFF[attempt];
         console.log(
@@ -81,9 +89,9 @@ async function callWithRetry(client, label, params) {
 }
 
 // ── Step 1: Keyword rankings ──────────────────────────────────────────
-async function step1KeywordRankings(client, siteId) {
+async function step1KeywordRankings(client: Anthropic, siteId: number) {
   console.log(`\n[step1] Getting keyword rankings for site_id=${siteId}...`);
-  const siteKeywords = keywords[siteId] || [];
+  const siteKeywords = keywords[siteId as keyof typeof keywords] || [];
 
   const keywordRanking = await getKeywordRankings(siteId, siteKeywords);
 
@@ -97,7 +105,7 @@ async function step1KeywordRankings(client, siteId) {
 }
 
 // ── Step 2: CMS Connector ─────────────────────────────────────────────
-async function step2CmsConnector(client, siteId) {
+async function step2CmsConnector(client: Anthropic, siteId: number) {
   console.log(`\n[step2] Analyzing low-CTR pages for site_id=${siteId}...`);
 
   const impressionsVsCtr = await getTop5PagesWithHighImpressionLowCtr(
@@ -105,7 +113,7 @@ async function step2CmsConnector(client, siteId) {
     28,
   );
   const pages = await Promise.all(
-    impressionsVsCtr.map(async (row) => {
+    impressionsVsCtr.map(async (row: any) => {
       const page = await getPage(siteId, row.url);
       return { ...page, ...row };
     }),
@@ -133,7 +141,7 @@ async function step2CmsConnector(client, siteId) {
   });
 
   const text = response.content
-    .filter((block) => block.text)
+    .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("")
     .trim();
@@ -146,40 +154,44 @@ async function step2CmsConnector(client, siteId) {
     return { opportunities: [], summary: text };
   }
 
-  await createApprovalQueue(
-    parsed.opportunities.map((opp) => {
-      return {
-        site_id: siteId,
-        module: "cms-connector",
-        type: "meta_rewrite",
-        priority: opp.priority,
-        title: opp.current_title,
-        content: {
-          url: opp.url,
-          current_title: opp.current_title,
-          current_description: opp.current_description,
-          suggested_title: opp.suggested_title,
-          suggested_description: opp.suggested_description,
-          reasoning: opp.reasoning,
-        },
-        preview_url: opp.url,
-      };
-    }),
-  );
+  // await createApprovalQueue(
+  //   parsed.opportunities.map((opp: any) => {
+  //     return {
+  //       site_id: siteId,
+  //       module: "cms-connector",
+  //       type: "meta_rewrite",
+  //       priority: opp.priority,
+  //       title: opp.current_title,
+  //       content: {
+  //         url: opp.url,
+  //         current_title: opp.current_title,
+  //         current_description: opp.current_description,
+  //         suggested_title: opp.suggested_title,
+  //         suggested_description: opp.suggested_description,
+  //         reasoning: opp.reasoning,
+  //       },
+  //       preview_url: opp.url,
+  //     };
+  //   }),
+  // );
 
   console.log(`[step2] Done`);
   return parsed;
 }
 
 // ── Step 3: Schema Manager ────────────────────────────────────────────
-async function step3SchemaManager(client, siteId, cmsData = null) {
+async function step3SchemaManager(
+  client: Anthropic,
+  siteId: number,
+  cmsData: any | null = null,
+) {
   console.log(`\n[step3] Analysing schema gaps for site_id=${siteId}...`);
 
   let topPages = [];
   if (cmsData && cmsData.opportunities && cmsData.opportunities.length > 0) {
     topPages = cmsData.opportunities
       .slice(0, 3)
-      .map((o) => o.url)
+      .map((o: any) => o.url)
       .filter(Boolean);
   }
   if (topPages.length === 0) {
@@ -201,10 +213,10 @@ async function step3SchemaManager(client, siteId, cmsData = null) {
 }
 
 // ── Step 4: Competitor Intel ──────────────────────────────────────────
-async function step4CompetitorIntel(client, siteId) {
+async function step4CompetitorIntel(client: Anthropic, siteId: number) {
   console.log(`\n[step4] Running competitor analysis for site_id=${siteId}...`);
 
-  const siteCompetitors = competitors[siteId] || [];
+  const siteCompetitors = competitors[siteId as keyof typeof competitors] || [];
   if (siteCompetitors.length === 0) {
     console.log(
       `[step4] No competitors configured for site_id=${siteId}, skipping.`,
@@ -243,7 +255,16 @@ async function step4CompetitorIntel(client, siteId) {
 }
 
 // ── Step 5: Reporting ─────────────────────────────────────────────────
-async function step5Reporting(client, siteId, data) {
+async function step5Reporting(
+  client: Anthropic,
+  siteId: number,
+  data: {
+    keywords: any;
+    cmsData: any;
+    schemaData: any;
+    competitorData: Array<any>;
+  },
+) {
   console.log(`\n[step5] Posting weekly digest for site_id=${siteId}...`);
 
   const {
@@ -319,7 +340,7 @@ Return ONLY a JSON object with keys:
   });
 
   const text = response.content
-    .filter((block) => block.text)
+    .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("")
     .trim();
@@ -342,7 +363,7 @@ Return ONLY a JSON object with keys:
 }
 
 // ── Summary Printer ───────────────────────────────────────────────────
-function printSummary(errors, elapsed) {
+function printSummary(errors: StepError, elapsed: number) {
   console.log(`\n[weekly] ══════════════════════════════════════════`);
   console.log(`[weekly] Pipeline complete in ${elapsed.toFixed(1)}s`);
   if (Object.keys(errors).length > 0) {
@@ -356,11 +377,21 @@ function printSummary(errors, elapsed) {
   console.log(`[weekly] ══════════════════════════════════════════`);
 }
 
+interface StepError {
+  step1: string;
+  step2: string;
+  step3: string;
+  step4: string;
+  step5: string;
+}
+
 // ── Main pipeline ─────────────────────────────────────────────────────
-async function runWeeklyTasks(siteId) {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+export async function runWeeklyTasks(siteId: number) {
+  const client: Anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
   const startTime = Date.now();
-  const errors = {};
+  const errors = {} as StepError;
 
   console.log(`[weekly] ══════════════════════════════════════════`);
   console.log(`[weekly] Starting weekly pipeline — site_id=${siteId}`);
@@ -371,37 +402,37 @@ async function runWeeklyTasks(siteId) {
   let keywordData = {};
   try {
     keywordData = await step1KeywordRankings(client, siteId);
-  } catch (exc) {
+  } catch (exc: any) {
     errors.step1 = exc.message;
     console.log(`[step1] ERROR: ${exc.message}`);
   }
 
   // ── Step 2: CMS connector — low-CTR page analysis ────────────────
-  let cmsData = {};
-  try {
-    cmsData = await step2CmsConnector(client, siteId);
-  } catch (exc) {
-    errors.step2 = exc.message;
-    console.log(`[step2] ERROR: ${exc.message}`);
-  }
+  // let cmsData = {};
+  // try {
+  //   cmsData = await step2CmsConnector(client, siteId);
+  // } catch (exc: any) {
+  //   errors.step2 = exc.message;
+  //   console.log(`[step2] ERROR: ${exc.message}`);
+  // }
 
   // ── Step 3: Schema manager ────────────────────────────────────────
   let schemaData = {};
-  try {
-    schemaData = await step3SchemaManager(client, siteId, cmsData);
-  } catch (exc) {
-    errors.step3 = exc.message;
-    console.log(`[step3] ERROR: ${exc.message}`);
-  }
+  // try {
+  //   schemaData = await step3SchemaManager(client, siteId, cmsData);
+  // } catch (exc: any) {
+  //   errors.step3 = exc.message;
+  //   console.log(`[step3] ERROR: ${exc.message}`);
+  // }
 
   // ── Step 4: Competitor intel ──────────────────────────────────────
   let competitorData = [];
-  try {
-    competitorData = await step4CompetitorIntel(client, siteId);
-  } catch (exc) {
-    errors.step4 = exc.message;
-    console.log(`[step4] ERROR: ${exc.message}`);
-  }
+  // try {
+  //   competitorData = await step4CompetitorIntel(client, siteId);
+  // } catch (exc) {
+  //   errors.step4 = exc.message;
+  //   console.log(`[step4] ERROR: ${exc.message}`);
+  // }
 
   // ── Timeout check ─────────────────────────────────────────────────
   let elapsedSeconds = (Date.now() - startTime) / 1000;
@@ -414,17 +445,17 @@ async function runWeeklyTasks(siteId) {
   }
 
   // ── Step 5: Reporting ─────────────────────────────────────────────
-  try {
-    await step5Reporting(client, siteId, {
-      keywords: keywordData,
-      cmsData,
-      schemaData,
-      competitorData,
-    });
-  } catch (exc) {
-    errors.step5 = exc.message;
-    console.log(`[step5] ERROR: ${exc.message}`);
-  }
+  // try {
+  //   await step5Reporting(client, siteId, {
+  //     keywords: keywordData,
+  //     cmsData,
+  //     schemaData,
+  //     competitorData,
+  //   });
+  // } catch (exc) {
+  //   errors.step5 = exc.message;
+  //   console.log(`[step5] ERROR: ${exc.message}`);
+  // }
 
   elapsedSeconds = (Date.now() - startTime) / 1000;
   printSummary(errors, elapsedSeconds);
@@ -432,6 +463,6 @@ async function runWeeklyTasks(siteId) {
 
 // ── Execute ───────────────────────────────────────────────────────────
 // if (import.meta.url === `file://${process.argv[1]}`) {
-const siteId = 1;
-runWeeklyTasks(siteId).catch(console.error);
+// const siteId = 1;
+// runWeeklyTasks(siteId).catch(console.error);
 // }

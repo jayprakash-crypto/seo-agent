@@ -9,6 +9,7 @@ import express, { Request, Response } from "express";
 import { createServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";
 import cors from "cors";
+import cron from "node-cron";
 
 import { approvalsRouter } from "./routes/approvals.routes.js";
 import { alertsRouter } from "./routes/alerts.routes.js";
@@ -19,18 +20,37 @@ import { createAlertsTable } from "./controllers/alerts.controller.js";
 import { createUsersTable } from "./controllers/users.controller.js";
 import pool from "./db.js";
 
+import { runWeeklyTasks } from "./orchestrators/weekly.js"
+
+cron.schedule("0 8 * * 1", () => {
+  runWeeklyTasks(1)
+}, {
+  timezone: "IST",
+  name: "Weekly Tasks"
+});
+
 // ── App + Socket.io ───────────────────────────────────────────────────
 const app = express();
 const httpServer = createServer(app);
 
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: [process.env.DASHBOARD_URL ?? "http://localhost:3001", "http://localhost:3001"],
+    origin: [
+      process.env.DASHBOARD_URL ?? "http://localhost:3001",
+      "http://localhost:3001",
+    ],
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors({ origin: [process.env.DASHBOARD_URL ?? "http://localhost:3001", "http://localhost:3001"] }));
+app.use(
+  cors({
+    origin: [
+      process.env.DASHBOARD_URL ?? "http://localhost:3001",
+      "http://localhost:3001",
+    ],
+  }),
+);
 app.use(express.json());
 
 // ── Routes ────────────────────────────────────────────────────────────

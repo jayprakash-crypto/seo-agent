@@ -2,7 +2,10 @@ const SERVER_NAME = "schema-manager";
 const SERVER_VERSION = "1.0.0";
 
 // ── WP Auth helper ────────────────────────────────────────────────────
-export function getWpAuth(siteId) {
+export function getWpAuth(siteId: number | string): {
+  baseUrl: string;
+  authHeader: string;
+} {
   const urlKey = `CMS_API_URL_SITE_${siteId}`;
   const keyKey = `CMS_API_KEY_SITE_${siteId}`;
   const baseUrl = process.env[urlKey]?.trim();
@@ -14,10 +17,15 @@ export function getWpAuth(siteId) {
 }
 
 // ── WP REST API fetch helper ──────────────────────────────────────────
-export async function wpFetch(siteId, method, endpoint, body) {
+export async function wpFetch(
+  siteId: number | string,
+  method: string,
+  endpoint: string,
+  body?: object,
+): Promise<unknown> {
   const { baseUrl, authHeader } = getWpAuth(siteId);
   const url = `${baseUrl}${endpoint}`;
-  const options = {
+  const options: RequestInit = {
     method,
     headers: {
       Authorization: authHeader,
@@ -35,7 +43,15 @@ export async function wpFetch(siteId, method, endpoint, body) {
 }
 
 // ── Page type detection ────────────────────────────────────────────────
-export const RECOMMENDED_SCHEMA = {
+export type PageType =
+  | "home"
+  | "service"
+  | "faq"
+  | "blog"
+  | "contact"
+  | "default";
+
+export const RECOMMENDED_SCHEMA: Record<PageType, string[]> = {
   home: ["Organization", "WebSite", "LocalBusiness"],
   service: ["Service", "LocalBusiness"],
   faq: ["FAQPage"],
@@ -44,7 +60,7 @@ export const RECOMMENDED_SCHEMA = {
   default: ["WebPage"],
 };
 
-export function detectPageType(url) {
+export function detectPageType(url: string): PageType {
   const path = new URL(url).pathname.toLowerCase();
   if (path === "/" || path === "") return "home";
   if (path.includes("faq") || path.includes("question")) return "faq";
@@ -67,7 +83,7 @@ export function detectPageType(url) {
 }
 
 // ── Tool: get_current_schema ──────────────────────────────────────────
-export async function getCurrentSchema(siteId, pageUrl) {
+export async function getCurrentSchema(siteId: number, pageUrl: string) {
   console.log("========== Fetching Current Schema **********\n", pageUrl);
   const html = await fetch(pageUrl).then((r) => r.text());
   const matches = [
@@ -95,7 +111,7 @@ export async function getCurrentSchema(siteId, pageUrl) {
 }
 
 // ── Tool: get_paa_questions ───────────────────────────────────────────
-export async function getPaaQuestions(siteId, keyword) {
+export async function getPaaQuestions(siteId: number, keyword: string) {
   const apiKey = process.env.SERPAPI_KEY;
   if (!apiKey) throw new Error("Missing env var SERPAPI_KEY");
 
@@ -106,7 +122,13 @@ export async function getPaaQuestions(siteId, keyword) {
     throw new Error(`SerpAPI error ${res.status}: ${res.statusText}`);
   }
   console.log("========== SerpAPI Fetched **********");
-  const data = await res.json();
+  const data = (await res.json()) as {
+    related_questions?: Array<{
+      question: string;
+      snippet?: string;
+      answer?: string;
+    }>;
+  };
 
   const questions = (data.related_questions ?? []).map((q) => {
     return {
@@ -126,16 +148,19 @@ export async function getPaaQuestions(siteId, keyword) {
 }
 
 // ── Tool: suggest_schema_improvements ────────────────────────────────
-export async function suggestSchemaImprovements(siteId, pageUrl) {
+export async function suggestSchemaImprovements(
+  siteId: number,
+  pageUrl: string,
+) {
   console.log("========== Running Schema Improvement **********\n", pageUrl);
   const current = await getCurrentSchema(siteId, pageUrl);
   const pageType = detectPageType(pageUrl);
   const recommended = RECOMMENDED_SCHEMA[pageType];
 
   // Extract @type values from existing schemas
-  const existingTypes = new Set();
+  const existingTypes = new Set<string>();
   for (const schema of current.schemas) {
-    const s = schema;
+    const s = schema as Record<string, unknown>;
     const t = s["@type"];
     if (typeof t === "string") existingTypes.add(t);
     else if (Array.isArray(t)) t.forEach((v) => existingTypes.add(String(v)));
@@ -163,7 +188,11 @@ export async function suggestSchemaImprovements(siteId, pageUrl) {
 }
 
 // ── Tool: push_schema_to_page ─────────────────────────────────────────
-export async function pushSchemaToPage(siteId, pageUrl, schemaJson) {
+export async function pushSchemaToPage(
+  siteId: number,
+  pageUrl: string,
+  schemaJson: unknown,
+) {
   // Resolve page ID by slug
   const parsed = new URL(pageUrl);
   const slug =
@@ -174,11 +203,11 @@ export async function pushSchemaToPage(siteId, pageUrl, schemaJson) {
 
   let pageId = null;
   for (const postType of ["pages", "posts"]) {
-    const results = await wpFetch(
+    const results = (await wpFetch(
       siteId,
       "GET",
       `/${postType}?slug=${encodeURIComponent(slug)}&_fields=id`,
-    );
+    )) as Array<{ id: number }>;
     if (results.length > 0) {
       pageId = results[0].id;
       break;
@@ -194,7 +223,12 @@ export async function pushSchemaToPage(siteId, pageUrl, schemaJson) {
   };
   // ─────────────────────────────────────────────────────────────────
 
-  const updated = await wpFetch(siteId, "PUT", `/pages/${pageId}`, payload);
+  const updated = (await wpFetch(
+    siteId,
+    "PUT",
+    `/pages/${pageId}`,
+    payload,
+  )) as { id: number; link: string };
 
   return {
     ok: true,
@@ -204,20 +238,29 @@ export async function pushSchemaToPage(siteId, pageUrl, schemaJson) {
   };
 }
 
-const suggestSchemaImprovementsForPages = async (pageList) => {
-  return await pageList.forEach(async (pageUrl) => {
-    try {
-      const result = await suggestSchemaImprovements(1, pageUrl);
-    } catch (error) {
-      console.error(
-        `Error suggesting schema improvements for ${pageUrl}:`,
-        error,
-      );
-    }
-  });
+const suggestSchemaImprovementsForPages = async (pageList: Array<string>) => {
+  return await Promise.all(
+    pageList.map(async (pageUrl) => {
+      try {
+        const result = await suggestSchemaImprovements(1, pageUrl);
+        console.log("*******************************************");
+        console.log(result);
+        console.log("*******************************************");
+        return result;
+      } catch (error) {
+        console.error(
+          `Error suggesting schema improvements for ${pageUrl}:`,
+          error,
+        );
+      }
+    }),
+  );
 };
 
-const getPaaQuestionsForKeywords = async (siteId, keywords) => {
+const getPaaQuestionsForKeywords = async (
+  siteId: number,
+  keywords: Array<string>,
+) => {
   if (!Array.isArray(keywords)) {
     throw new Error("keywords must be an array");
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -15,10 +15,33 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { proxyFetch } from "@/lib/api";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible";
+import { toast } from "sonner";
+import { SquarePen, Trash2 } from "lucide-react";
+import { Textarea } from "./ui/textarea";
 
 // ── Tab 1: Add City ───────────────────────────────────────────────────
-function AddCityTab() {
+function AddCityTab({ onSuccess }: { onSuccess?: (data?: any[]) => void }) {
   const [form, setForm] = useState({
     site_id: "1",
     city: "",
@@ -42,6 +65,8 @@ function AddCityTab() {
       if (!res.ok) throw new Error("Failed");
       setStatus("done");
       setForm((f) => ({ ...f, city: "", state: "", target_keyword: "" }));
+      const resp = await res.json();
+      onSuccess && onSuccess(resp.items);
     } catch {
       setStatus("error");
     }
@@ -59,12 +84,27 @@ function AddCityTab() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
+              <Label htmlFor="city">Site ID</Label>
+              <Input
+                id="site_id"
+                placeholder="1"
+                disabled
+                value={form.site_id}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, site_id: e.target.value }))
+                }
+                required
+              />
+            </div>
+            <div className="space-y-1">
               <Label htmlFor="city">City Name</Label>
               <Input
                 id="city"
                 placeholder="e.g. Mumbai"
                 value={form.city}
-                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, city: e.target.value }))
+                }
                 required
               />
             </div>
@@ -89,11 +129,13 @@ function AddCityTab() {
                 }
               />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-2">
               <Label htmlFor="keyword">Target Keyword</Label>
-              <Input
+              <Textarea
                 id="keyword"
+                className="min-h-[150px]"
                 placeholder="e.g. home care Mumbai"
+                rows={5}
                 value={form.target_keyword}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, target_keyword: e.target.value }))
@@ -102,14 +144,11 @@ function AddCityTab() {
             </div>
           </div>
 
-          {status === "done" && (
-            <Alert>
-              <AlertDescription>City added successfully!</AlertDescription>
-            </Alert>
-          )}
           {status === "error" && (
             <Alert variant="destructive">
-              <AlertDescription>Failed to add city. Try again.</AlertDescription>
+              <AlertDescription>
+                Failed to add city. Try again.
+              </AlertDescription>
             </Alert>
           )}
 
@@ -123,14 +162,13 @@ function AddCityTab() {
 }
 
 // ── Tab 2: Add Website ────────────────────────────────────────────────
-function AddWebsiteTab() {
+function AddWebsiteTab({ onSuccess }: { onSuccess?: (data?: any[]) => void }) {
   const [form, setForm] = useState({
-    name: "",
-    url: "",
-    gsc_property: "",
-    gbp_location_id: "",
-    sheets_id: "",
-    slack_channel: "",
+    site_id: "",
+    domain: "",
+    brand_name: "",
+    industry: "",
+    cities: "",
   });
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">(
     "idle",
@@ -140,16 +178,45 @@ function AddWebsiteTab() {
     e.preventDefault();
     setStatus("saving");
     try {
-      const res = await proxyFetch("/api/config/sites", {
+      const res = await fetch("/api/config/sites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, site_id: Number(form.site_id) }),
       });
       if (!res.ok) throw new Error("Failed");
       setStatus("done");
+      setForm({
+        site_id: "",
+        domain: "",
+        brand_name: "",
+        industry: "",
+        cities: "",
+      });
+      const resp = await res.json();
+      onSuccess && onSuccess(resp.items);
     } catch {
       setStatus("error");
     }
+  }
+
+  function field(
+    id: keyof typeof form,
+    label: string,
+    placeholder?: string,
+    required = false,
+  ) {
+    return (
+      <div className="space-y-1">
+        <Label htmlFor={id}>{label}</Label>
+        <Input
+          id={id}
+          placeholder={placeholder}
+          value={form[id]}
+          onChange={(e) => setForm((f) => ({ ...f, [id]: e.target.value }))}
+          required={required}
+        />
+      </div>
+    );
   }
 
   return (
@@ -157,77 +224,25 @@ function AddWebsiteTab() {
       <CardHeader>
         <CardTitle>Add Website</CardTitle>
         <CardDescription>
-          Register a new site to be managed by the SEO agent.
+          Register a new site in the &quot;Sites Config&quot; Google Sheet.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
+            {field("site_id", "Site Id", "1", true)}
+            {field("domain", "Domain", "https://example.com", true)}
+            {field("brand_name", "Brand Name", "e.g. LifeCircle", true)}
+            {field("industry", "Industry", "e.g. Healthcare")}
             <div className="space-y-1">
-              <Label htmlFor="name">Site Name</Label>
-              <Input
-                id="name"
-                placeholder="e.g. LifeCircle"
-                value={form.name}
+              <Label htmlFor={"cities"}>Cities</Label>
+              <Textarea
+                id={"cities"}
+                className="min-h-[100px]"
+                placeholder={"e.g. Mumbai, Delhi (comma-separated)"}
+                value={form["cities"]}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, name: e.target.value }))
-                }
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="url">Site URL</Label>
-              <Input
-                id="url"
-                placeholder="https://example.com"
-                value={form.url}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, url: e.target.value }))
-                }
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="gsc">GSC Property</Label>
-              <Input
-                id="gsc"
-                placeholder="sc-domain:example.com"
-                value={form.gsc_property}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, gsc_property: e.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="gbp">GBP Location ID</Label>
-              <Input
-                id="gbp"
-                placeholder="accounts/123/locations/456"
-                value={form.gbp_location_id}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, gbp_location_id: e.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="sheets">Google Sheets ID</Label>
-              <Input
-                id="sheets"
-                placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-                value={form.sheets_id}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, sheets_id: e.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="slack">Slack Channel ID</Label>
-              <Input
-                id="slack"
-                placeholder="C0XXXXXXXXX"
-                value={form.slack_channel}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, slack_channel: e.target.value }))
+                  setForm((f) => ({ ...f, cities: e.target.value }))
                 }
               />
             </div>
@@ -235,14 +250,14 @@ function AddWebsiteTab() {
 
           {status === "done" && (
             <Alert>
-              <AlertDescription>
-                Site registered! Update env vars and redeploy.
-              </AlertDescription>
+              <AlertDescription>Site registered successfully!</AlertDescription>
             </Alert>
           )}
           {status === "error" && (
             <Alert variant="destructive">
-              <AlertDescription>Failed to register site.</AlertDescription>
+              <AlertDescription>
+                Failed to register site. Try again.
+              </AlertDescription>
             </Alert>
           )}
 
@@ -265,7 +280,8 @@ function EditConfigTab() {
     keyword_tracker_url: "https://keyword-tracker-seo-agent.up.railway.app/mcp",
     cms_connector_url: "https://cms-connector-seo-agent.up.railway.app/mcp",
     schema_manager_url: "https://schema-manager-seo-agent.up.railway.app/mcp",
-    competitor_intel_url: "https://competitor-intel-seo-agent.up.railway.app/mcp",
+    competitor_intel_url:
+      "https://competitor-intel-seo-agent.up.railway.app/mcp",
   });
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">(
     "idle",
@@ -387,21 +403,604 @@ function EditConfigTab() {
   );
 }
 
+// ── Tab 4: Websites ───────────────────────────────────────────────────
+interface SiteRow {
+  rowIndex: number;
+  site_id: string;
+  domain: string;
+  brand_name: string;
+  industry: string;
+  cities: string;
+}
+
+type SiteEditForm = Omit<SiteRow, "site_id"> & { site_id: string };
+
+function WebsitesTab() {
+  const [sites, setSites] = useState<SiteRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+  const [editing, setEditing] = useState<SiteEditForm | null>(null);
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "done" | "error"
+  >("idle");
+  const [open, setOpen] = useState(false);
+
+  async function loadSites() {
+    setLoading(true);
+    setFetchError("");
+    try {
+      const res = await fetch("/api/config/sites?siteIds=1");
+      if (!res.ok) throw new Error("Failed to load");
+      setSites((await res.json()) as SiteRow[]);
+    } catch {
+      setFetchError("Could not load sites from Google Sheets.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadSites();
+  }, []);
+
+  function openEdit(row: SiteRow) {
+    setSaveStatus("idle");
+    setEditing({ ...row });
+  }
+
+  async function handleDelete(row: SiteRow) {
+    if (!confirm(`Delete "${row.domain}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch("/api/config/sites", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rowIndex: row.rowIndex,
+          site_id: Number(row.site_id),
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setSites((prev) => prev.filter((item) => item.rowIndex != row.rowIndex));
+      toast.success("Site deleted successfully!", {
+        position: "bottom-right",
+        classNames: {
+          toast: "!bg-green-400/20",
+          icon: "text-green-500",
+          title: "!text-green-700",
+        },
+      });
+    } catch {
+      alert("Failed to delete. Try again.");
+    }
+  }
+
+  async function handleSave() {
+    if (!editing) return;
+    setSaveStatus("saving");
+    try {
+      const res = await fetch("/api/config/sites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...editing, site_id: Number(editing.site_id) }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setSaveStatus("done");
+      setEditing(null);
+      void loadSites();
+      toast.success("Site updated successfully!", {
+        position: "bottom-right",
+        classNames: {
+          toast: "!bg-green-400/20",
+          icon: "text-green-500",
+          title: "!text-green-700",
+        },
+      });
+    } catch {
+      setSaveStatus("error");
+    }
+  }
+
+  function handleAddSuccess(data: any[] = []) {
+    setOpen(false);
+    void loadSites();
+    toast.success("Site added successfully!", {
+      position: "bottom-right",
+      classNames: {
+        toast: "!bg-green-400/20",
+        icon: "text-green-500",
+        title: "!text-green-700",
+      },
+    });
+  }
+
+  return (
+    <>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="text-end">
+          <CollapsibleTrigger
+            className={"ms-auto cursor-pointer"}
+            render={<Button variant={"outline"} />}
+          >
+            + Website
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent className={"mt-4"}>
+          <AddWebsiteTab onSuccess={handleAddSuccess} />
+        </CollapsibleContent>
+      </Collapsible>
+
+      <br />
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Websites</CardTitle>
+            <CardDescription>
+              Sites sourced from the &quot;Sites Config&quot; tab in Google
+              Sheets.
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadSites}
+            disabled={loading}
+          >
+            {loading ? "Loading…" : "Refresh"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {fetchError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{fetchError}</AlertDescription>
+            </Alert>
+          )}
+          {!loading && sites.length === 0 && !fetchError && (
+            <p className="text-sm text-muted-foreground">
+              No sites found in the sheet.
+            </p>
+          )}
+          {sites.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Site ID</TableHead>
+                  <TableHead>Domain</TableHead>
+                  <TableHead>Brand Name</TableHead>
+                  <TableHead>Industry</TableHead>
+                  <TableHead>Cities</TableHead>
+                  <TableHead className="w-24" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sites.map((row) => (
+                  <TableRow key={row.rowIndex}>
+                    <TableCell>{row.site_id}</TableCell>
+                    <TableCell className="font-medium">{row.domain}</TableCell>
+                    <TableCell>{row.brand_name}</TableCell>
+                    <TableCell>{row.industry}</TableCell>
+                    <TableCell
+                      className="max-w-[200px] truncate"
+                      title={row.cities}
+                    >
+                      {row.cities}
+                    </TableCell>
+                    <TableCell className="flex justify-center gap-2">
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        onClick={() => openEdit(row)}
+                      >
+                        <SquarePen />
+                      </Button>
+                      <Button
+                        size="icon-sm"
+                        variant="destructive"
+                        onClick={() => handleDelete(row)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={!!editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      >
+        <DialogContent className={"sm:max-w-2xl"}>
+          <DialogHeader>
+            <DialogTitle>Edit Website — row {editing?.rowIndex}</DialogTitle>
+          </DialogHeader>
+          {editing && (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <div className="space-y-1">
+                <Label>Site Id</Label>
+                <Input
+                  value={editing.site_id}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, site_id: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Domain</Label>
+                <Input
+                  value={editing.domain}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, domain: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Brand Name</Label>
+                <Input
+                  value={editing.brand_name}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, brand_name: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Industry</Label>
+                <Input
+                  value={editing.industry}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, industry: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label>Cities (comma-separated)</Label>
+                <Textarea
+                  className="min-h-[100px]"
+                  value={editing.cities}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, cities: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+          )}
+          {saveStatus === "error" && (
+            <Alert variant="destructive">
+              <AlertDescription>Failed to save. Try again.</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saveStatus === "saving"}>
+              {saveStatus === "saving" ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ── Tab 5: Cities Config ──────────────────────────────────────────────
+interface CityRow {
+  rowIndex: number;
+  site_id: string;
+  city: string;
+  state: string;
+  country: string;
+  target_keyword: string;
+  created_at: string;
+}
+
+type EditForm = Omit<CityRow, "created_at">;
+
+function CitiesConfigTab() {
+  const [cities, setCities] = useState<CityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+  const [editing, setEditing] = useState<EditForm | null>(null);
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "done" | "error"
+  >("idle");
+  const [open, setOpen] = useState(false);
+
+  async function loadCities() {
+    setLoading(true);
+    setFetchError("");
+    try {
+      const res = await fetch("/api/config/cities?siteIds=1");
+      if (!res.ok) throw new Error("Failed to load");
+      setCities((await res.json()) as CityRow[]);
+    } catch {
+      setFetchError("Could not load cities from Google Sheets.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadCities();
+  }, []);
+
+  function openEdit(row: CityRow) {
+    setSaveStatus("idle");
+    setEditing({
+      rowIndex: row.rowIndex,
+      site_id: row.site_id,
+      city: row.city,
+      state: row.state,
+      country: row.country,
+      target_keyword: row.target_keyword,
+    });
+  }
+
+  async function handleDelete(row: CityRow) {
+    if (!confirm(`Delete "${row.city}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch("/api/config/cities", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rowIndex: row.rowIndex,
+          site_id: Number(row.site_id),
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setCities((prev) => prev.filter((item) => item.rowIndex != row.rowIndex));
+      toast.success("City deleted successfully!", {
+        position: "bottom-right",
+        classNames: {
+          toast: "!bg-green-400/20",
+          icon: "text-green-500",
+          title: "!text-green-700",
+        },
+      });
+    } catch {
+      alert("Failed to delete. Try again.");
+    }
+  }
+
+  async function handleSave() {
+    if (!editing) return;
+    setSaveStatus("saving");
+    try {
+      const res = await fetch("/api/config/cities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editing),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setSaveStatus("done");
+      setEditing(null);
+      void loadCities();
+      toast.success("City updated successfully!", {
+        position: "bottom-right",
+        classNames: {
+          toast: "!bg-green-400/20",
+          icon: "text-green-500",
+          title: "!text-green-700",
+        },
+      });
+    } catch {
+      setSaveStatus("error");
+    }
+  }
+
+  function handleAddSuccess(data: any[] = []) {
+    setOpen(false);
+    void loadCities();
+    toast.success("City added successfully!", {
+      position: "bottom-right",
+      classNames: {
+        toast: "!bg-green-400/20",
+        icon: "text-green-500",
+        title: "!text-green-700",
+      },
+    });
+  }
+
+  return (
+    <>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="text-end">
+          <CollapsibleTrigger
+            className={"ms-auto cursor-pointer"}
+            render={<Button variant={"outline"} />}
+          >
+            + Cities
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent className={"mt-4"}>
+          <AddCityTab onSuccess={handleAddSuccess} />
+        </CollapsibleContent>
+      </Collapsible>
+
+      <br />
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Cities Config</CardTitle>
+            <CardDescription>
+              Cities sourced from the &quot;Cities Config&quot; tab in Google
+              Sheets.
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadCities}
+            disabled={loading}
+          >
+            {loading ? "Loading…" : "Refresh"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {fetchError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{fetchError}</AlertDescription>
+            </Alert>
+          )}
+
+          {!loading && cities.length === 0 && !fetchError && (
+            <p className="text-sm text-muted-foreground">
+              No cities found in the sheet.
+            </p>
+          )}
+
+          {cities.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Site ID</TableHead>
+                  <TableHead>City</TableHead>
+                  <TableHead>State</TableHead>
+                  <TableHead>Country</TableHead>
+                  <TableHead>Target Keyword</TableHead>
+                  <TableHead className="w-20" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cities.map((row) => (
+                  <TableRow key={row.rowIndex}>
+                    <TableCell>{row.site_id}</TableCell>
+                    <TableCell className="font-medium">{row.city}</TableCell>
+                    <TableCell>{row.state}</TableCell>
+                    <TableCell>{row.country}</TableCell>
+                    <TableCell>{row.target_keyword}</TableCell>
+                    <TableCell className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEdit(row)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDelete(row)}
+                      >
+                        Delete
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={!!editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      >
+        <DialogContent className={"sm:max-w-2xl"}>
+          <DialogHeader>
+            <DialogTitle>Edit City — row {editing?.rowIndex}</DialogTitle>
+          </DialogHeader>
+
+          {editing && (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <div className="space-y-1">
+                <Label>Site ID</Label>
+                <Input
+                  disabled
+                  value={editing.site_id}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, site_id: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>City</Label>
+                <Input
+                  value={editing.city}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, city: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>State</Label>
+                <Input
+                  value={editing.state}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, state: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Country</Label>
+                <Input
+                  value={editing.country}
+                  onChange={(e) =>
+                    setEditing((f) => f && { ...f, country: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label>Target Keyword</Label>
+                <Textarea
+                  className="min-h-[150px]"
+                  value={editing.target_keyword}
+                  onChange={(e) =>
+                    setEditing(
+                      (f) => f && { ...f, target_keyword: e.target.value },
+                    )
+                  }
+                />
+              </div>
+              
+            </div>
+          )}
+
+          {saveStatus === "error" && (
+            <Alert variant="destructive">
+              <AlertDescription>Failed to save. Try again.</AlertDescription>
+            </Alert>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saveStatus === "saving"}>
+              {saveStatus === "saving" ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────
 export default function ConfigManager() {
   return (
-    <Tabs defaultValue="add-city" orientation="horizontal">
+    <Tabs defaultValue="websites" orientation="horizontal">
       <TabsList className="mb-4">
-        <TabsTrigger value="add-city">Add City</TabsTrigger>
-        <TabsTrigger value="add-website">Add Website</TabsTrigger>
-        <TabsTrigger value="edit-config">Edit Config</TabsTrigger>
+        <TabsTrigger value="websites">Websites</TabsTrigger>
+        <TabsTrigger value="cities-config">Cities</TabsTrigger>
       </TabsList>
-      <TabsContent value="add-city">
-        <AddCityTab />
+
+      <TabsContent value="websites">
+        <WebsitesTab />
       </TabsContent>
-      <TabsContent value="add-website">
-        <AddWebsiteTab />
+      <TabsContent value="cities-config">
+        <CitiesConfigTab />
       </TabsContent>
+
       <TabsContent value="edit-config">
         <EditConfigTab />
       </TabsContent>

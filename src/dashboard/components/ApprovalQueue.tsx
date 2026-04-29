@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useContext } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getSocket } from "@/lib/socket";
 import { getSiteName } from "@/lib/sites";
 import {
@@ -29,7 +29,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { UserContext } from "@/providers/users.provider";
 import { proxyFetch } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -188,8 +187,6 @@ function ApprovalCard({
   approval: Approval;
   onAction: () => void;
 }) {
-  const user = useContext(UserContext);
-
   const [editOpen, setEditOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [loading, setLoading] = useState(false);
