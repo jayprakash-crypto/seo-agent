@@ -1,12 +1,12 @@
 import { google } from "googleapis";
 
-import { SITES } from "../../sites_config.js"
+import { SITES } from "../../sites_config.js";
 
 const SERVER_NAME = "cms-connector";
 const SERVER_VERSION = "1.0.0";
 
 // ── GSC Auth helpers (reused from keyword-tracker) ────────────────────
-export function getGscAuth(siteId) {
+export function getGscAuth(siteId: number | string) {
   const envKey = `GSC_OAUTH_SITE_${siteId}`;
   const raw = process.env[envKey];
   if (!raw) throw new Error(`Missing env var ${envKey} for site_id=${siteId}`);
@@ -17,15 +17,18 @@ export function getGscAuth(siteId) {
   });
 }
 
-export function getSiteUrl(siteId) {
-  const map = SITES;
+export function getSiteUrl(siteId: number | string): string {
+  const map: Record<string, string> = SITES;
   const url = map[String(siteId)];
   if (!url) throw new Error(`Unknown site_id=${siteId}`);
   return url;
 }
 
 // ── WP Auth helper ────────────────────────────────────────────────────
-export function getWpAuth(siteId) {
+export function getWpAuth(siteId: number | string): {
+  baseUrl: string;
+  authHeader: string;
+} {
   const urlKey = `CMS_API_URL_SITE_${siteId}`;
   const keyKey = `CMS_API_KEY_SITE_${siteId}`;
   const baseUrl = process.env[urlKey]?.trim();
@@ -38,10 +41,15 @@ export function getWpAuth(siteId) {
 }
 
 // ── WP REST API fetch helper ──────────────────────────────────────────
-export async function wpFetch(siteId, method, endpoint, body) {
+export async function wpFetch(
+  siteId: number | string,
+  method: string,
+  endpoint: string,
+  body?: object,
+): Promise<unknown> {
   const { baseUrl, authHeader } = getWpAuth(siteId);
   const url = `${baseUrl}${endpoint}`;
-  const options = {
+  const options: RequestInit = {
     method,
     headers: {
       Authorization: authHeader,
@@ -68,11 +76,11 @@ export async function wpFetch(siteId, method, endpoint, body) {
 }
 
 // ── GSC date helpers ──────────────────────────────────────────────────
-function fmtDate(d) {
+function fmtDate(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
-function dateRange(days) {
+function dateRange(days: number): { startDate: string; endDate: string } {
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - days);
@@ -80,7 +88,7 @@ function dateRange(days) {
 }
 
 // ── Tool: get_page ────────────────────────────────────────────────────
-export async function getPage(siteId, pageUrl) {
+export async function getPage(siteId: number, pageUrl: string) {
   // Extract slug from URL path
   const parsed = new URL(pageUrl);
   const slug =
@@ -93,11 +101,11 @@ export async function getPage(siteId, pageUrl) {
   let wpPage = null;
   console.log("============= CMS Getting Page ***************", pageUrl, slug);
   for (const postType of ["pages", "posts"]) {
-    const results = await wpFetch(
+    const results = (await wpFetch(
       siteId,
       "GET",
       `/${postType}?slug=${encodeURIComponent(slug)}&_fields=id,title,content,modified,link,rank_math_meta,meta`,
-    );
+    )) as Record<string, unknown>[];
     if (results.length > 0) {
       wpPage = results[0];
       break;
@@ -107,12 +115,16 @@ export async function getPage(siteId, pageUrl) {
   console.log("============= CMS Page Found ***************");
 
   // Extract meta description (RankMath preferred, custom meta fallback)
-  const rank_math = wpPage.rank_math_meta;
-  const meta = wpPage.meta;
+  const rank_math = wpPage.rank_math_meta as
+    | Record<string, unknown>
+    | undefined
+    | null;
+  const meta = wpPage.meta as Record<string, unknown> | undefined | null;
   const metaDescription =
-    rank_math?.description ?? meta?.meta_description ?? null;
-
-  const title = wpPage.title;
+    (rank_math?.description as string | undefined) ??
+    (meta?.meta_description as string | undefined) ??
+    null;
+  const title = wpPage.title as { rendered: string };
 
   return {
     id: wpPage.id,
@@ -124,7 +136,7 @@ export async function getPage(siteId, pageUrl) {
 }
 
 // ── Tool: list_pages ──────────────────────────────────────────────────
-export async function listPages(siteId, limit, offset) {
+export async function listPages(siteId: number, limit: number, offset: number) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new Error("limit must be an integer between 1 and 100");
   }
@@ -134,11 +146,16 @@ export async function listPages(siteId, limit, offset) {
 
   // Fetch WP pages
   console.log("============= CMS Listing Pages ***************");
-  const wpPages = await wpFetch(
+  const wpPages = (await wpFetch(
     siteId,
     "GET",
     `/pages?per_page=${limit}&offset=${offset}&status=publish&_fields=id,title,link,modified`,
-  );
+  )) as Array<{
+    id: number;
+    title: { rendered: string };
+    link: string;
+    modified: string;
+  }>;
 
   // Fetch GSC metrics for all pages in a single query (last 28 days)
   const auth = getGscAuth(siteId);
@@ -191,7 +208,7 @@ export async function listPages(siteId, limit, offset) {
 }
 
 // ── Tool: get_page_metrics ────────────────────────────────────────────
-export async function getPageMetrics(siteId, pageUrl) {
+export async function getPageMetrics(siteId: number, pageUrl: string) {
   const auth = getGscAuth(siteId);
   const siteUrl = getSiteUrl(siteId);
   const searchConsole = google.searchconsole({ version: "v1", auth });
@@ -229,11 +246,12 @@ export async function getPageMetrics(siteId, pageUrl) {
 
 // ── Tool: update_page_meta ────────────────────────────────────────────
 export async function updatePageMeta(
-  siteId,
-  pageUrl,
-  title,
-  description,
-  _extraFields,
+  siteId: number,
+  pageUrl: string,
+  title: string,
+  description: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _extraFields?: Record<string, any>,
 ) {
   // update_page_meta MUST NEVER set post_status to 'publish'.
   if (
@@ -288,7 +306,21 @@ export async function updatePageMeta(
   };
 }
 
-export async function createApprovalQueue(items) {
+export interface ApprovalQueueItem {
+  site_id: number;
+  module: string;
+  type: string;
+  priority?: number; // 1=critical, 2=high, 3=medium (default 3)
+  title: string;
+  content: Record<string, unknown>;
+  preview_url?: string;
+}
+
+export async function createApprovalQueue(items: ApprovalQueueItem[]): Promise<{
+  queued: number;
+  results: unknown[];
+  errors: { index: number; error: string }[];
+}> {
   const apiUrl = process.env.BACKEND_API_URL ?? "http://localhost:3002";
   const url = `${apiUrl}/approvals`;
 
@@ -340,7 +372,7 @@ export async function createApprovalQueue(items) {
 }
 
 // ── Tool: get_impressions_vs_ctr ──────────────────────────────────────
-export async function getImpressionsVsCtr(siteId, days) {
+export async function getImpressionsVsCtr(siteId: number, days: number) {
   if (!Number.isInteger(days) || days < 1 || days > 90) {
     throw new Error("days must be an integer between 1 and 90");
   }
@@ -362,7 +394,12 @@ export async function getImpressionsVsCtr(siteId, days) {
 
   // Pages with high impressions but low CTR = content improvement opportunities
   const opportunities = (response.data.rows ?? [])
-    .filter((row) => (row.impressions ?? 0) > 100 && (row.ctr ?? 0) < 0.03 && row.keys?.[0] !== `${siteUrl}/`)
+    .filter(
+      (row) =>
+        (row.impressions ?? 0) > 100 &&
+        (row.ctr ?? 0) < 0.03 &&
+        row.keys?.[0] !== `${siteUrl}/`,
+    )
     .map((row) => ({
       url: row.keys?.[0] ?? "",
       impressions: row.impressions ?? 0,
@@ -380,9 +417,11 @@ export async function getImpressionsVsCtr(siteId, days) {
   };
 }
 
-const getTop5PagesWithHighImpressionLowCtr = async (siteId) => {
-  let pages = await getImpressionsVsCtr(siteId, 28);
-  pages = pages.opportunities.sort((a, b) => b.impressions - a.impressions);
+const getTop5PagesWithHighImpressionLowCtr = async (siteId: number, days: number) => {
+  let pages: any = await getImpressionsVsCtr(siteId, days);
+  pages = pages.opportunities.sort(
+    (a: any, b: any) => b.impressions - a.impressions,
+  );
   return pages.slice(0, 5);
 };
 
