@@ -317,12 +317,14 @@ const CollapsibleRow = ({
           {rowData.actioned_user_name ?? "—"}
         </TableCell>
         <TableCell className="text-xs text-muted-foreground">
-          {new Date(rowData.actioned_at).toLocaleDateString()}
+          {rowData.actioned_at
+            ? new Date(rowData.actioned_at).toLocaleDateString()
+            : "—"}
         </TableCell>
       </CollapsibleTrigger>
 
       <CollapsibleContent render={<TableRow />}>
-        <TableCell colSpan={8} className="p-0">
+        <TableCell colSpan={10} className="p-0">
           <div className="p-4">
             <Card>
               <CardHeader className="pb-2">
