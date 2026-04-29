@@ -113,7 +113,7 @@ export function createWeeklyDigest(siteId: number, data: Record<string, any>) {
 
   // Cap rankings at 15 to stay within block text limits
   const rankLines = rankings.length
-    ? `Keywords performance for ${rankings.length} is added in google sheet
+    ? `Performance for ${rankings.length} keywords is added to google sheet
 Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y_t3TXp1iI7S3ZidQf6VHtH8UQTY/edit?usp=sharing\n
     `
     : "No ranking data available.";
