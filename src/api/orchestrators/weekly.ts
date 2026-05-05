@@ -167,7 +167,7 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
   - For each page from data above, follow the rules and write an improved title (max 60 chars) and meta description (max 155 chars) to increase CTR
 
   Return ONLY a JSON object with keys:
-  - opportunities: array of objects with url, current_ctr, impressions, current_title, current_description, suggested_title, suggested_description, reasoning, priority (1-3 based on potential impact)
+  - opportunities: array of objects with keywords(secondary keywords), url, current_ctr, impressions, current_title, current_description, suggested_title, suggested_description, reasoning, priority (1-3 based on potential impact)
   - summary: string with 2-3 overall action items
 
   No extra text.`,
@@ -199,6 +199,7 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
         priority: opp.priority,
         title: opp.current_title,
         content: {
+          focus_keywords: opp.keywords,
           url: opp.url,
           current_title: opp.current_title,
           current_description: opp.current_description,
