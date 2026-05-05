@@ -124,14 +124,14 @@ export async function getPage(siteId: number, pageUrl: string) {
     (rank_math?.description as string | undefined) ??
     (meta?.meta_description as string | undefined) ??
     null;
-  const title = wpPage.title as { rendered: string };
+  const title = rank_math?.title as string;
   const primary_keywords = (rank_math?.focus_keyword as string).split(",")[0];
   const secondary_keywords = (rank_math?.focus_keyword as string).split(",");
 
   return {
     id: wpPage.id,
     url: wpPage.link ?? pageUrl,
-    title: title.rendered,
+    title: title,
     meta_description: metaDescription,
     last_modified: wpPage.modified,
     primary_keywords,
