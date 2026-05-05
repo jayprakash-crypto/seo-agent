@@ -5,10 +5,7 @@ import {
   MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources/beta.js";
 
-import {
-  KEYWORDS as keywords,
-  COMPETITORS as competitors,
-} from "../sites_config.js";
+import { getSheetsClient, getSpreadsheetId } from "../libs/google.js";
 
 import { getKeywordRankings } from "../mcp-servers/keyword-tracker/server.js";
 import {
@@ -32,6 +29,30 @@ import {
 } from "../mcp-servers/reporting/server.js";
 
 dotenv.config();
+
+interface SitesConfig {
+  site_id: number;
+  domain: string;
+  brand_name: string;
+  industry: string;
+  cities: string[];
+}
+
+interface SitesKeywordsConfig {
+  site_id: number;
+  domain: string;
+  keywords: string[];
+}
+
+interface CompetitorsConfig {
+  site_id: number;
+  domain: string;
+  competitors_domain: string[];
+}
+
+let sitesConfig: SitesConfig[] = [];
+let sitesKeywordsConfig: Record<string | number, SitesKeywordsConfig> = {};
+let sitesCompetitorsConfig: Record<string | number, CompetitorsConfig> = {};
 
 // ── Config ────────────────────────────────────────────────────────────
 const DRY_RUN = ["1", "true", "yes"].includes(
@@ -91,7 +112,7 @@ async function callWithRetry(
 // ── Step 1: Keyword rankings ──────────────────────────────────────────
 async function step1KeywordRankings(client: Anthropic, siteId: number) {
   console.log(`\n[step1] Getting keyword rankings for site_id=${siteId}...`);
-  const siteKeywords = keywords[siteId as keyof typeof keywords] || [];
+  const siteKeywords = sitesKeywordsConfig[siteId].keywords || [];
 
   const keywordRanking = await getKeywordRankings(siteId, siteKeywords);
 
@@ -216,7 +237,8 @@ async function step3SchemaManager(
 async function step4CompetitorIntel(client: Anthropic, siteId: number) {
   console.log(`\n[step4] Running competitor analysis for site_id=${siteId}...`);
 
-  const siteCompetitors = competitors[siteId as keyof typeof competitors] || [];
+  const siteCompetitors =
+    sitesCompetitorsConfig[siteId].competitors_domain || [];
   if (siteCompetitors.length === 0) {
     console.log(
       `[step4] No competitors configured for site_id=${siteId}, skipping.`,
@@ -382,7 +404,7 @@ interface StepError {
 }
 
 // ── Main pipeline ─────────────────────────────────────────────────────
-export async function runWeeklyTasks(siteId: number) {
+async function runWeeklyTasks(siteId: number) {
   const client: Anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
@@ -455,6 +477,67 @@ export async function runWeeklyTasks(siteId: number) {
 
   elapsedSeconds = (Date.now() - startTime) / 1000;
   printSummary(errors, elapsedSeconds);
+}
+
+export async function weeklyTasks() {
+  // Getting Google sheets data
+  const sheets = getSheetsClient(1);
+  const spreadsheetId = getSpreadsheetId();
+
+  const { data } = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: spreadsheetId,
+    ranges: [
+      "Sites Config!A:E",
+      "Cities Config!A:E",
+      "Keywords!A:C",
+      "Competitors Config!A:C",
+    ],
+  });
+
+  const datas = (data.valueRanges || []).map((tabs) => {
+    const tabName = tabs?.range?.split("!")[0] || "";
+    const rows = tabs.values?.slice(1);
+
+    return {
+      tabName,
+      rows,
+    };
+  });
+
+  sitesConfig =
+    datas
+      .find((item) => item.tabName === "'Sites Config'")
+      ?.rows?.map((site) => ({
+        site_id: site[0],
+        domain: site[1],
+        brand_name: site[2],
+        industry: site[3],
+        cities: site[4]?.split(","),
+      })) || [];
+
+  datas
+    .find((item) => item.tabName === "Keywords")
+    ?.rows?.forEach((site) => {
+      sitesKeywordsConfig[site[0]] = {
+        site_id: site[0],
+        domain: site[1],
+        keywords: site[2]?.split(","),
+      };
+    }) || [];
+
+  datas
+    .find((item) => item.tabName === "'Competitors Config'")
+    ?.rows?.forEach((site) => {
+      sitesCompetitorsConfig[site[0]] = {
+        site_id: site[0],
+        domain: site[1],
+        competitors_domain: site[2]?.split(","),
+      };
+    }) || [];
+
+  // sitesConfig.map((site: SitesConfig) => {
+  runWeeklyTasks(1);
+  // });
 }
 
 // ── Execute ───────────────────────────────────────────────────────────

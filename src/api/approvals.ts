@@ -20,10 +20,10 @@ import { createAlertsTable } from "./controllers/alerts.controller.js";
 import { createUsersTable } from "./controllers/users.controller.js";
 import pool from "./db.js";
 
-import { runWeeklyTasks } from "./orchestrators/weekly.js"
+import { weeklyTasks } from "./orchestrators/weekly.js"
 
 cron.schedule("0 8 * * 1", () => {
-  runWeeklyTasks(1)
+  weeklyTasks()
 }, {
   timezone: "IST",
   name: "Weekly Tasks"
