@@ -200,7 +200,7 @@ export default function AllApprovals() {
                 </TableCell>
               </TableRow>
             </TableBody>
-          ) : !data || data.approvals.length === 0 ? (
+          ) : !data || data?.approvals?.length === 0 ? (
             <TableBody>
               <TableRow>
                 <TableCell

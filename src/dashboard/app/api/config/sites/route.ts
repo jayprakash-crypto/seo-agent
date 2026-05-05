@@ -88,10 +88,9 @@ export async function POST(req: NextRequest) {
         range: `'${TAB}'!A${rowIndex}:E${rowIndex}`,
         valueInputOption: "RAW",
         requestBody: {
-          values: [[String(site_id), domain, brand_name, industry, cities]],
+          values: [[Number(site_id), domain, brand_name, industry, cities]],
         },
       });
-      console.log("ADD ", resp);
 
       return NextResponse.json({
         ok: true,
@@ -106,7 +105,7 @@ export async function POST(req: NextRequest) {
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
-        values: [[String(site_id), domain, brand_name, industry, cities]],
+        values: [[Number(site_id), domain, brand_name, industry, cities]],
       },
     });
 
