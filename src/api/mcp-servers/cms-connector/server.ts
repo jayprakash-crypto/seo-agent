@@ -125,6 +125,8 @@ export async function getPage(siteId: number, pageUrl: string) {
     (meta?.meta_description as string | undefined) ??
     null;
   const title = wpPage.title as { rendered: string };
+  const primary_keywords = (rank_math?.focus_keyword as string).split(",")[0];
+  const secondary_keywords = (rank_math?.focus_keyword as string).split(",");
 
   return {
     id: wpPage.id,
@@ -132,6 +134,8 @@ export async function getPage(siteId: number, pageUrl: string) {
     title: title.rendered,
     meta_description: metaDescription,
     last_modified: wpPage.modified,
+    primary_keywords,
+    secondary_keywords,
   };
 }
 
@@ -417,12 +421,15 @@ export async function getImpressionsVsCtr(siteId: number, days: number) {
   };
 }
 
-const getTop5PagesWithHighImpressionLowCtr = async (siteId: number, days: number) => {
+const getPagesWithHighImpressionLowCtr = async (
+  siteId: number,
+  days: number,
+) => {
   let pages: any = await getImpressionsVsCtr(siteId, days);
   pages = pages.opportunities.sort(
     (a: any, b: any) => b.impressions - a.impressions,
   );
-  return pages.slice(0, 5);
+  return pages.slice(0, 10);
 };
 
-export { getTop5PagesWithHighImpressionLowCtr };
+export { getPagesWithHighImpressionLowCtr };
