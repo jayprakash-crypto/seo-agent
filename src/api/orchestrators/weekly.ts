@@ -11,7 +11,7 @@ import { getKeywordRankings } from "../mcp-servers/keyword-tracker/server.js";
 import {
   createApprovalQueue,
   getPage,
-  getTop5PagesWithHighImpressionLowCtr,
+  getPagesWithHighImpressionLowCtr,
 } from "../mcp-servers/cms-connector/server.js";
 import {
   suggestSchemaImprovementsForPages,
@@ -129,16 +129,27 @@ async function step1KeywordRankings(client: Anthropic, siteId: number) {
 async function step2CmsConnector(client: Anthropic, siteId: number) {
   console.log(`\n[step2] Analyzing low-CTR pages for site_id=${siteId}...`);
 
-  const impressionsVsCtr = await getTop5PagesWithHighImpressionLowCtr(
+  const impressionsVsCtr = await getPagesWithHighImpressionLowCtr(
     siteId,
     28,
   );
   const pages = await Promise.all(
     impressionsVsCtr.map(async (row: any) => {
       const page = await getPage(siteId, row.url);
-      return { ...page, ...row };
+      const primaryKeywords = page.primary_keywords;
+      const secondaryKeywords = page.secondary_keywords;
+
+      return { ...page, ...row, primaryKeywords, secondaryKeywords };
     }),
   );
+
+  /*
+  - primary keyword should be present in h1 heading tag
+  - secondary keywords should me present in subheading
+  - primary and secondary keywords should be present in contents
+  - primary keyword should be present in the first 10% of the content
+  - minimum content should be 1500 words
+  */
 
   const response = await callWithRetry(client, "step2", {
     model: "claude-sonnet-4-5",
@@ -147,9 +158,13 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
       {
         role: "user",
         content: `You are an SEO content analyst for site_id=${siteId}.
+  Here are the rules for SEO content:
+  - primary keywords must be present in page title and SEO title
+  - primary keywords must be present in SEO meta description
+
   ${JSON.stringify(pages)}
 
-  - For each page from data above, write an improved title (max 60 chars) and meta description (max 155 chars) to increase CTR
+  - For each page from data above, follow the rules and write an improved title (max 60 chars) and meta description (max 155 chars) to increase CTR
 
   Return ONLY a JSON object with keys:
   - opportunities: array of objects with url, current_ctr, impressions, current_title, current_description, suggested_title, suggested_description, reasoning, priority (1-3 based on potential impact)
