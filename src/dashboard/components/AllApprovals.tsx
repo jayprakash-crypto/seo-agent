@@ -27,7 +27,7 @@ import {
   CollapsibleTrigger,
 } from "./ui/collapsible";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { ScrollArea } from "./ui/scroll-area";
+import { MetaRewrite } from "./app/approval";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface Approval {
@@ -38,7 +38,8 @@ interface Approval {
   priority: number;
   title: string;
   status: "pending" | "approved" | "rejected" | "deferred";
-  content: Object;
+  original_content: Object;
+  updated_content: Object;
   preview_url?: string;
   created_at: string;
   actioned_at: string;
@@ -275,7 +276,6 @@ const CollapsibleRow = ({
   rowCount: number;
 }) => {
   const priority = PRIORITY_MAP[rowData.priority] ?? PRIORITY_MAP[3];
-  const previewText = JSON.stringify(rowData.content, null, 2);
 
   return (
     <Collapsible render={<TableBody />}>
@@ -343,21 +343,11 @@ const CollapsibleRow = ({
               </CardHeader>
 
               <CardContent>
-                <ScrollArea className="h-32 rounded border bg-muted p-2">
-                  <pre className="whitespace-pre-wrap font-mono text-xs">
-                    {previewText}
-                    {/* {JSON.stringify(rowData.content).length > 400 ? "…" : ""} */}
-                  </pre>
-                </ScrollArea>
-                {rowData.preview_url && (
-                  <a
-                    href={rowData.preview_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 block text-xs text-blue-600 hover:underline"
-                  >
-                    Preview →
-                  </a>
+                {rowData.type === "meta_rewrite" && (
+                  <MetaRewrite
+                    original_content={rowData.original_content}
+                    updated_content={rowData.updated_content}
+                  />
                 )}
               </CardContent>
             </Card>

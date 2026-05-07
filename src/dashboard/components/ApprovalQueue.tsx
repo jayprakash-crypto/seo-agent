@@ -26,8 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { MetaRewrite, MetaRewriteForm } from "./app/approval";
 
 import { proxyFetch } from "@/lib/api";
 
@@ -39,7 +39,8 @@ interface Approval {
   type: string;
   priority: number;
   title: string;
-  content: Record<string, unknown>;
+  original_content: Record<string, any>;
+  updated_content: Record<string, any>;
   preview_url?: string;
   status: "pending" | "approved" | "rejected" | "deferred";
   created_at: string;
@@ -78,38 +79,45 @@ function EditApproveDialog({
   onClose: () => void;
   onApprove: (content: Record<string, unknown>) => void;
 }) {
-  const [editedContent, setEditedContent] = useState(
-    JSON.stringify(approval.content, null, 2),
+  const [title, setTitle] = useState(approval.updated_content.suggested_title);
+  const [description, setDescription] = useState(
+    approval.updated_content.suggested_description,
   );
-  const [error, setError] = useState("");
+
+  const reasoning = approval.updated_content.reasoning;
 
   function handleApprove() {
     try {
-      const parsed = JSON.parse(editedContent) as Record<string, unknown>;
-      onApprove(parsed);
-    } catch {
-      setError("Invalid JSON — fix formatting before approving.");
+      const payload = {
+        ...approval.updated_content,
+        suggested_title: title,
+        suggested_description: description,
+      };
+
+      onApprove(payload);
+    } catch (err) {
+      console.log("Approval Error : ", err);
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl sm:max-w-3xl">
+      <DialogContent className="max-h-9/10 max-w-2xl sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Edit &amp; Approve</DialogTitle>
           <p className="text-sm text-muted-foreground">{approval.title}</p>
         </DialogHeader>
-
-        <Textarea
-          className="h-80 font-mono text-xs"
-          value={editedContent}
-          onChange={(e) => {
-            setEditedContent(e.target.value);
-            setError("");
-          }}
-        />
-        {error && <p className="text-xs text-destructive">{error}</p>}
-
+        <ScrollArea className="max-h-[500] px-1 -mx-2 pe-4">
+          {approval.type === "meta_rewrite" && (
+            <MetaRewriteForm
+              title={title}
+              setTitle={setTitle}
+              description={description}
+              setDescription={setDescription}
+              reasoning={reasoning}
+            />
+          )}
+        </ScrollArea>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
@@ -229,7 +237,8 @@ function ApprovalCard({
     onAction();
   }
 
-  const previewText = JSON.stringify(approval.content, null, 2);
+  const previewOriginalText = approval.original_content;
+  const previewUpdatedText = approval.updated_content;
 
   return (
     <>
@@ -248,21 +257,11 @@ function ApprovalCard({
         </CardHeader>
 
         <CardContent>
-          <ScrollArea className="h-32 rounded border bg-muted p-2">
-            <pre className="whitespace-pre-wrap font-mono text-xs">
-              {previewText}
-              {/* {JSON.stringify(approval.content).length > 400 ? "…" : ""} */}
-            </pre>
-          </ScrollArea>
-          {approval.preview_url && (
-            <a
-              href={approval.preview_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 block text-xs text-blue-600 hover:underline"
-            >
-              Preview →
-            </a>
+          {approval.type === "meta_rewrite" && (
+            <MetaRewrite
+              original_content={previewOriginalText}
+              updated_content={previewUpdatedText}
+            />
           )}
         </CardContent>
 
@@ -329,7 +328,9 @@ export default function ApprovalQueue({
 
   const fetchApprovals = useCallback(async () => {
     try {
-      const res = await proxyFetch(`/api/approvals?status=pending&sort=priority`);
+      const res = await proxyFetch(
+        `/api/approvals?status=pending&sort=priority`,
+      );
       const data = (await res.json()) as { approvals: Approval[] };
       setApprovals(data.approvals ?? []);
       onCountChange?.(data.approvals?.length ?? 0);
