@@ -57,41 +57,43 @@ export function MetaRewrite({
             </div>
           </ScrollArea>
         </div>
-        <div className="space-y-2 rounded-md border p-2 pe-0 bg-muted">
-          <Label>Suggested content</Label>
-          <ScrollArea className="h-40 py-2 pe-3">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Title:</Label>
-                <p className="rounded border p-2">
-                  {previewUpdatedText.suggested_title}
-                </p>
+        {previewUpdatedText && (
+          <div className="space-y-2 rounded-md border p-2 pe-0 bg-muted">
+            <Label>Suggested content</Label>
+            <ScrollArea className="h-40 py-2 pe-3">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Title:</Label>
+                  <p className="rounded border p-2">
+                    {previewUpdatedText.suggested_title}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Description:</Label>
+                  <p className="rounded border p-2">
+                    {previewUpdatedText.suggested_description}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Reason:</Label>
+                  <p className="rounded border p-2">
+                    {previewUpdatedText.reasoning}
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Description:</Label>
-                <p className="rounded border p-2">
-                  {previewUpdatedText.suggested_description}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Reason:</Label>
-                <p className="rounded border p-2">
-                  {previewUpdatedText.reasoning}
-                </p>
-              </div>
-            </div>
-          </ScrollArea>
-          {/* {approval.preview_url && (
-          <a
-            href={approval.preview_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 block text-xs text-blue-600 hover:underline"
-          >
-            Preview →
-          </a>
-        )} */}
-        </div>
+            </ScrollArea>
+            {/* {approval.preview_url && (
+              <a
+                href={approval.preview_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 block text-xs text-blue-600 hover:underline"
+              >
+                Preview →
+              </a>
+            )} */}
+          </div>
+        )}
       </div>
     </>
   );
