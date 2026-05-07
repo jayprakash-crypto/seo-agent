@@ -24,7 +24,8 @@ interface CreateApprovalBody {
   type?: string;
   priority?: number;
   title?: string;
-  content?: Record<string, unknown>;
+  original_content?: Record<string, unknown>;
+  suggested_content?: Record<string, unknown>;
   preview_url?: string;
 }
 
@@ -39,11 +40,12 @@ export function approvalsRouter(io: SocketIOServer): Router {
       type,
       priority = 3,
       title,
-      content,
+      original_content,
+      suggested_content,
       preview_url,
     } = req.body as CreateApprovalBody;
 
-    if (!site_id || !module || !type || !title || !content) {
+    if (!site_id || !module || !type || !title || !suggested_content) {
       res.status(400).json({
         success: false,
         error: "Missing required fields: site_id, module, type, title, content",
@@ -59,7 +61,8 @@ export function approvalsRouter(io: SocketIOServer): Router {
         type: String(type),
         priority: Number(priority),
         title: String(title),
-        content: content as Record<string, unknown>,
+        original_content: original_content as Record<string, unknown>,
+        updated_content: suggested_content as Record<string, unknown>,
         preview_url: preview_url ? String(preview_url) : null,
       });
       io.emit("approval:created", approval);
@@ -107,76 +110,88 @@ export function approvalsRouter(io: SocketIOServer): Router {
   });
 
   // POST /approvals/:id/approve
-  router.post("/:id/approve", requireAuth, async (req: Request, res: Response) => {
-    const { sub } = (req as AuthRequest).user!;
-    const { content } = req.body as {
-      content?: Record<string, unknown>;
-    };
-    try {
-      const approval = await approveApproval(
-        req.params.id,
-        sub ?? "operator",
-        content,
-      );
-      if (!approval) {
-        res.status(404).json({ success: false, error: "Approval not found" });
-        return;
+  router.post(
+    "/:id/approve",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      const { sub } = (req as AuthRequest).user!;
+      const { content } = req.body as {
+        content?: Record<string, unknown>;
+      };
+      try {
+        const approval = await approveApproval(
+          req.params.id,
+          sub ?? "operator",
+          content,
+        );
+        if (!approval) {
+          res.status(404).json({ success: false, error: "Approval not found" });
+          return;
+        }
+        io.emit("approval:updated", approval);
+        res.json({ success: true, ...approval });
+      } catch (err) {
+        console.error("[approvals] approve error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
       }
-      io.emit("approval:updated", approval);
-      res.json({ success: true, ...approval });
-    } catch (err) {
-      console.error("[approvals] approve error:", err);
-      res.status(500).json({ success: false, error: "Database error" });
-    }
-  });
+    },
+  );
 
   // POST /approvals/:id/reject
-  router.post("/:id/reject", requireAuth, async (req: Request, res: Response) => {
-    const { sub } = (req as AuthRequest).user!;
-    const { reason } = req.body as {
-      reason?: string;
-    };
+  router.post(
+    "/:id/reject",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      const { sub } = (req as AuthRequest).user!;
+      const { reason } = req.body as {
+        reason?: string;
+      };
 
-    if (!reason) {
-      res
-        .status(400)
-        .json({ success: false, error: "Reject reason is required" });
-      return;
-    }
-    try {
-      const approval = await rejectApproval(
-        req.params.id,
-        sub ?? "operator",
-        reason,
-      );
-      if (!approval) {
-        res.status(404).json({ success: false, error: "Approval not found" });
+      if (!reason) {
+        res
+          .status(400)
+          .json({ success: false, error: "Reject reason is required" });
         return;
       }
-      io.emit("approval:updated", approval);
-      res.json({ success: true, ...approval });
-    } catch (err) {
-      console.error("[approvals] reject error:", err);
-      res.status(500).json({ success: false, error: "Database error" });
-    }
-  });
+      try {
+        const approval = await rejectApproval(
+          req.params.id,
+          sub ?? "operator",
+          reason,
+        );
+        if (!approval) {
+          res.status(404).json({ success: false, error: "Approval not found" });
+          return;
+        }
+        io.emit("approval:updated", approval);
+        res.json({ success: true, ...approval });
+      } catch (err) {
+        console.error("[approvals] reject error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
 
   // POST /approvals/:id/defer
-  router.post("/:id/defer", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const { sub } = (req as AuthRequest).user!;
-      const approval = await deferApproval(req.params.id, sub ?? "operator");
-      if (!approval) {
-        res.status(404).json({ success: false, error: "Approval not found" });
-        return;
+  router.post(
+    "/:id/defer",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { sub } = (req as AuthRequest).user!;
+        const approval = await deferApproval(req.params.id, sub ?? "operator");
+        if (!approval) {
+          res.status(404).json({ success: false, error: "Approval not found" });
+          return;
+        }
+        io.emit("approval:updated", approval);
+        res.json({ success: true, ...approval });
+      } catch (err) {
+        console.error("[approvals] defer error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
       }
-      io.emit("approval:updated", approval);
-      res.json({ success: true, ...approval });
-    } catch (err) {
-      console.error("[approvals] defer error:", err);
-      res.status(500).json({ success: false, error: "Database error" });
-    }
-  });
+    },
+  );
 
   return router;
 }

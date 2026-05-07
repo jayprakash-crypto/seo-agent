@@ -104,7 +104,7 @@ export async function getPage(siteId: number, pageUrl: string) {
     const results = (await wpFetch(
       siteId,
       "GET",
-      `/${postType}?slug=${encodeURIComponent(slug)}&_fields=id,title,content,modified,link,rank_math_meta,meta`,
+      `/${postType}?slug=${encodeURIComponent(slug)}&_fields=id,title,type,modified,link,rank_math_meta,meta`,
     )) as Record<string, unknown>[];
     if (results.length > 0) {
       wpPage = results[0];
@@ -131,6 +131,7 @@ export async function getPage(siteId: number, pageUrl: string) {
   return {
     id: wpPage.id,
     url: wpPage.link ?? pageUrl,
+    type: wpPage.type,
     title: title,
     meta_description: metaDescription,
     last_modified: wpPage.modified,
@@ -316,7 +317,8 @@ export interface ApprovalQueueItem {
   type: string;
   priority?: number; // 1=critical, 2=high, 3=medium (default 3)
   title: string;
-  content: Record<string, unknown>;
+  original_content: Record<string, unknown>;
+  suggested_content?: Record<string, unknown>;
   preview_url?: string;
 }
 
@@ -343,7 +345,8 @@ export async function createApprovalQueue(items: ApprovalQueueItem[]): Promise<{
           type: item.type,
           priority: item.priority ?? 3,
           title: item.title,
-          content: item.content,
+          original_content: item.original_content,
+          suggested_content: item.suggested_content,
           preview_url: item.preview_url ?? null,
         }),
       });

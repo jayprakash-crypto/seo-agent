@@ -15,7 +15,8 @@ export interface Approval extends RowDataPacket {
   type: string; // VARCHAR(64)
   priority: number; // TINYINT — 1=critical, 2=high, 3=medium
   title: string; // VARCHAR(255)
-  content: Record<string, unknown>; // JSON (parsed by mysql2)
+  original_content: Record<string, unknown>; // JSON (parsed by mysql2)
+  updated_content: Record<string, unknown> | null; // JSON (parsed by mysql2) | NULL
   preview_url: string | null; // VARCHAR(512) | NULL
   status: "pending" | "approved" | "rejected" | "deferred"; // VARCHAR(16)
   created_at: Date; // DATETIME(3)
@@ -32,7 +33,8 @@ export interface ApprovalJSON {
   type: string;
   priority: number;
   title: string;
-  content: Record<string, unknown>;
+  original_content: Record<string, unknown>;
+  updated_content: Record<string, unknown> | null;
   preview_url: string | null;
   status: "pending" | "approved" | "rejected" | "deferred";
   created_at: string;
@@ -45,10 +47,14 @@ export interface ApprovalJSON {
 function toJSON(row: Approval): ApprovalJSON {
   return {
     ...row,
-    content:
-      typeof row.content === "string"
-        ? (JSON.parse(row.content) as Record<string, unknown>)
-        : row.content,
+    original_content:
+      typeof row.original_content === "string"
+        ? (JSON.parse(row.original_content) as Record<string, unknown>)
+        : row.original_content,
+    updated_content:
+      row.updated_content === null || typeof row.updated_content === "object"
+        ? row.updated_content
+        : (JSON.parse(row.updated_content) as Record<string, unknown>),
     created_at:
       row.created_at instanceof Date
         ? row.created_at.toISOString()
@@ -71,14 +77,15 @@ export async function createApproval(
     | "type"
     | "priority"
     | "title"
-    | "content"
+    | "original_content"
+    | "updated_content"
     | "preview_url"
   >,
 ): Promise<ApprovalJSON> {
   await pool.query<ResultSetHeader>(
     `INSERT INTO approvals
-       (id, site_id, module, type, priority, title, content, preview_url, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(3))`,
+      (id, site_id, module, type, priority, title, original_content, updated_content, preview_url, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(3))`,
     [
       data.id,
       data.site_id,
@@ -86,7 +93,8 @@ export async function createApproval(
       data.type,
       data.priority,
       data.title,
-      JSON.stringify(data.content),
+      JSON.stringify(data.original_content),
+      JSON.stringify(data.updated_content),
       data.preview_url ?? null,
     ],
   );
@@ -159,34 +167,27 @@ export async function getApprovalById(
 export async function approveApproval(
   id: string,
   actionedBy: string,
-  content?: Record<string, unknown>,
+  editedContent?: Record<string, unknown>,
 ): Promise<ApprovalJSON | null> {
-  const sets = [
-    "status = 'approved'",
-    "actioned_at = NOW(3)",
-    "actioned_by = ?",
-  ];
-  const params: unknown[] = [actionedBy];
+  const approval = await getApprovalById(id);
+  if (!approval) return null;
 
-  if (content) {
-    sets.push("content = ?");
-    params.push(JSON.stringify(content));
-  }
-  params.push(id);
+  // Use editedContent if provided, otherwise use the suggested AI-generated content
+  const contentToStore = editedContent ?? approval.updated_content;
 
   const [result] = await pool.query<ResultSetHeader>(
-    `UPDATE approvals SET ${sets.join(", ")} WHERE id = ?`,
-    params,
+    `UPDATE approvals
+     SET status = 'approved', actioned_at = NOW(3), actioned_by = ?, updated_content = ?
+     WHERE id = ?`,
+    [actionedBy, JSON.stringify(contentToStore), id],
   );
 
   if (result.affectedRows === 0) return null;
 
-  const approval = await getApprovalById(id);
-  if (!approval) return null;
-
   // If the approved item is a meta_rewrite, push the change to WordPress.
   if (approval.type === "meta_rewrite") {
-    const c = approval.content as {
+    const c = (approval.updated_content ?? approval.original_content) as {
+      // Use updated_content if present, else original
       url?: string;
       suggested_title?: string;
       suggested_description?: string;
@@ -255,7 +256,8 @@ export async function createApprovalsTable(): Promise<void> {
       type          VARCHAR(64)   NOT NULL,
       priority      TINYINT       NOT NULL DEFAULT 3,
       title         VARCHAR(255)  NOT NULL,
-      content       JSON          NOT NULL,
+      original_content JSON         NOT NULL,
+      updated_content JSON          NULL,
       preview_url   VARCHAR(512)  NULL,
       status        VARCHAR(16)   NOT NULL DEFAULT 'pending',
       created_at    DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
