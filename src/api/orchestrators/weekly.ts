@@ -129,10 +129,7 @@ async function step1KeywordRankings(client: Anthropic, siteId: number) {
 async function step2CmsConnector(client: Anthropic, siteId: number) {
   console.log(`\n[step2] Analyzing low-CTR pages for site_id=${siteId}...`);
 
-  const impressionsVsCtr = await getPagesWithHighImpressionLowCtr(
-    siteId,
-    28,
-  );
+  const impressionsVsCtr = await getPagesWithHighImpressionLowCtr(siteId, 28);
   const pages = await Promise.all(
     impressionsVsCtr.map(async (row: any) => {
       const page = await getPage(siteId, row.url);
@@ -153,14 +150,14 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
 
   const response = await callWithRetry(client, "step2", {
     model: "claude-sonnet-4-5",
-    max_tokens: 8192,
+    max_tokens: 10000,
     messages: [
       {
         role: "user",
         content: `You are an SEO content analyst for site_id=${siteId}.
   Here are the rules for SEO content:
-  - primary keywords must be present in page title and SEO title
-  - primary keywords must be present in SEO meta description
+  - primary keywords must be present in title
+  - primary keywords must be present in meta description
 
   ${JSON.stringify(pages)}
 
@@ -175,6 +172,8 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     ],
     betas: ["mcp-client-2025-04-04"],
   });
+
+  console.log("Stop Reason: ", response.stop_reason);
 
   const text = response.content
     .filter((block) => block.type === "text")
@@ -198,11 +197,15 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
         type: "meta_rewrite",
         priority: opp.priority,
         title: opp.current_title,
-        content: {
+        original_content: {
           focus_keywords: opp.keywords,
           url: opp.url,
+          type: opp.type,
           current_title: opp.current_title,
           current_description: opp.current_description,
+        },
+        suggested_content: {
+          type: opp.type,
           suggested_title: opp.suggested_title,
           suggested_description: opp.suggested_description,
           reasoning: opp.reasoning,
@@ -373,6 +376,8 @@ Return ONLY a JSON object with keys:
     betas: ["mcp-client-2025-04-04"],
   });
 
+  console.log("Stop Reason: ", response.stop_reason);
+
   const text = response.content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
@@ -434,12 +439,12 @@ async function runWeeklyTasks(siteId: number) {
 
   // ── Step 1: Keyword rankings ──────────────────────────────────────
   let keywordData = {};
-  try {
-    keywordData = await step1KeywordRankings(client, siteId);
-  } catch (exc: any) {
-    errors.step1 = exc.message;
-    console.log(`[step1] ERROR: ${exc.message}`);
-  }
+  // try {
+  //   keywordData = await step1KeywordRankings(client, siteId);
+  // } catch (exc: any) {
+  //   errors.step1 = exc.message;
+  //   console.log(`[step1] ERROR: ${exc.message}`);
+  // }
 
   // ── Step 2: CMS connector — low-CTR page analysis ────────────────
   let cmsData = {};
@@ -452,21 +457,21 @@ async function runWeeklyTasks(siteId: number) {
 
   // ── Step 3: Schema manager ────────────────────────────────────────
   let schemaData = {};
-  try {
-    schemaData = await step3SchemaManager(client, siteId, cmsData);
-  } catch (exc: any) {
-    errors.step3 = exc.message;
-    console.log(`[step3] ERROR: ${exc.message}`);
-  }
+  // try {
+  //   schemaData = await step3SchemaManager(client, siteId, cmsData);
+  // } catch (exc: any) {
+  //   errors.step3 = exc.message;
+  //   console.log(`[step3] ERROR: ${exc.message}`);
+  // }
 
   // ── Step 4: Competitor intel ──────────────────────────────────────
   let competitorData: any[] = [];
-  try {
-    competitorData = await step4CompetitorIntel(client, siteId);
-  } catch (exc: any) {
-    errors.step4 = exc.message;
-    console.log(`[step4] ERROR: ${exc.message}`);
-  }
+  // try {
+  //   competitorData = await step4CompetitorIntel(client, siteId);
+  // } catch (exc: any) {
+  //   errors.step4 = exc.message;
+  //   console.log(`[step4] ERROR: ${exc.message}`);
+  // }
 
   // ── Timeout check ─────────────────────────────────────────────────
   let elapsedSeconds = (Date.now() - startTime) / 1000;
@@ -479,17 +484,17 @@ async function runWeeklyTasks(siteId: number) {
   }
 
   // ── Step 5: Reporting ─────────────────────────────────────────────
-  try {
-    await step5Reporting(client, siteId, {
-      keywords: keywordData,
-      cmsData,
-      schemaData,
-      competitorData,
-    });
-  } catch (exc: any) {
-    errors.step5 = exc.message;
-    console.log(`[step5] ERROR: ${exc.message}`);
-  }
+  // try {
+  //   await step5Reporting(client, siteId, {
+  //     keywords: keywordData,
+  //     cmsData,
+  //     schemaData,
+  //     competitorData,
+  //   });
+  // } catch (exc: any) {
+  //   errors.step5 = exc.message;
+  //   console.log(`[step5] ERROR: ${exc.message}`);
+  // }
 
   elapsedSeconds = (Date.now() - startTime) / 1000;
   printSummary(errors, elapsedSeconds);
