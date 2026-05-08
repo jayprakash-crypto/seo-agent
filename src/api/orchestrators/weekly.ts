@@ -23,7 +23,7 @@ import {
   getBacklinksForCompetitorDomain,
 } from "../mcp-servers/competitor-intel/server.js";
 import {
-  postMessageToSlack,
+  postWeeklyMessageToSlack,
   writeKeywordRankingsToSheet,
   writeRecommendationsToSheet,
 } from "../mcp-servers/reporting/server.js";
@@ -390,7 +390,7 @@ Return ONLY a JSON object with keys:
 
   await writeRecommendationsToSheet(siteId, parsed.recommendations);
 
-  await postMessageToSlack(siteId, {
+  await postWeeklyMessageToSlack(siteId, {
     rankings: keywords.rankings || [],
     cmsOpportunities: (cmsData || {}).opportunities || [],
     schemaGaps: (schemaData || {}).pages || [],
