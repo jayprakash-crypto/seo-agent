@@ -11,7 +11,7 @@ export function MetaRewrite({
   updated_content: Record<string, any>;
 }) {
   const previewOriginalText = original_content;
-  const previewUpdatedText = updated_content;
+  const previewUpdatedText = updated_content || original_content;
 
   return (
     <>

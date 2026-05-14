@@ -405,7 +405,7 @@ export async function getImpressionsVsCtr(siteId: number, days: number) {
       (row) =>
         (row.impressions ?? 0) > 100 &&
         (row.ctr ?? 0) < 0.03 &&
-        row.keys?.[0] !== `${siteUrl}/`,
+        row.keys?.[0].split("?")[0] !== `${siteUrl}/`,
     )
     .map((row) => ({
       url: row.keys?.[0] ?? "",

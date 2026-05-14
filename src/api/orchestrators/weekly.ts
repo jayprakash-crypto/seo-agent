@@ -510,7 +510,7 @@ export async function weeklyTasks() {
     ranges: [
       "Sites Config!A:E",
       "Cities Config!A:E",
-      "Keywords!A:C",
+      "Keywords Config!A:C",
       "Competitors Config!A:C",
     ],
   });
@@ -537,7 +537,7 @@ export async function weeklyTasks() {
       })) || [];
 
   datas
-    .find((item) => item.tabName === "Keywords")
+    .find((item) => item.tabName === "'Keywords Config'")
     ?.rows?.forEach((site) => {
       sitesKeywordsConfig[site[0]] = {
         site_id: site[0],

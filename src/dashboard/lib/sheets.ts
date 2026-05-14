@@ -33,7 +33,7 @@ export function structureToWebsitesRowConfig(data: any): WebsitesRowConfig[] {
 
 export function structureToKeywordsRowConfig(data: any): KeywordsRowConfig[]{
   let rows: KeywordsRowConfig[] = [];
-  let temp = data.find((sheet: any) => sheet.tabName === "Keywords").rows;
+  let temp = data.find((sheet: any) => sheet.tabName === "'Keywords Config'").rows;
 
   rows = temp.slice(1).map((sheet: any, index: number) => ({
     rowIndex: index + 2,

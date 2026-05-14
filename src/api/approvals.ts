@@ -35,7 +35,7 @@ cron.schedule(
 );
 
 cron.schedule(
-  "0 7 11 * *",
+  "0 7 1 * *",
   () => {
     monthlyDiscovery();
   },
