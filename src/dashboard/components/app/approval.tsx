@@ -11,7 +11,7 @@ export function MetaRewrite({
   updated_content: Record<string, any>;
 }) {
   const previewOriginalText = original_content;
-  const previewUpdatedText = updated_content;
+  const previewUpdatedText = updated_content || original_content;
 
   return (
     <>
@@ -57,31 +57,32 @@ export function MetaRewrite({
             </div>
           </ScrollArea>
         </div>
-        <div className="space-y-2 rounded-md border p-2 pe-0 bg-muted">
-          <Label>Suggested content</Label>
-          <ScrollArea className="h-40 py-2 pe-3">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Title:</Label>
-                <p className="rounded border p-2">
-                  {previewUpdatedText.suggested_title}
-                </p>
+        {previewUpdatedText && (
+          <div className="space-y-2 rounded-md border p-2 pe-0 bg-muted">
+            <Label>Suggested content</Label>
+            <ScrollArea className="h-40 py-2 pe-3">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Title:</Label>
+                  <p className="rounded border p-2">
+                    {previewUpdatedText.suggested_title}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Description:</Label>
+                  <p className="rounded border p-2">
+                    {previewUpdatedText.suggested_description}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Reason:</Label>
+                  <p className="rounded border p-2">
+                    {previewUpdatedText.reasoning}
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Description:</Label>
-                <p className="rounded border p-2">
-                  {previewUpdatedText.suggested_description}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Reason:</Label>
-                <p className="rounded border p-2">
-                  {previewUpdatedText.reasoning}
-                </p>
-              </div>
-            </div>
-          </ScrollArea>
-          {/* {approval.preview_url && (
+            </ScrollArea>
+            {/* {approval.preview_url && (
           <a
             href={approval.preview_url}
             target="_blank"
@@ -91,7 +92,8 @@ export function MetaRewrite({
             Preview →
           </a>
         )} */}
-        </div>
+          </div>
+        )}
       </div>
     </>
   );
