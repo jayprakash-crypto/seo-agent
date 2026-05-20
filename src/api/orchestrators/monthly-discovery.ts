@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import * as dotenv from "dotenv";
 import { getSheetsClient, getSpreadsheetId } from "../libs/google.js";
 import {
@@ -9,6 +8,7 @@ import {
   KeywordOpportunity,
 } from "../mcp-servers/keyword-researcher/server.js";
 import { postMonthlyDiscoveryToSlack } from "../mcp-servers/reporting/server.js";
+import ollama from "ollama";
 
 dotenv.config();
 
@@ -78,8 +78,7 @@ async function writeToContentCalendar(
 /**
  * Uses Claude to identify content strategies based on keyword data
  */
-async function analyzeWithClaude(
-  client: Anthropic,
+async function analyzeWithAI(
   site: SiteDiscoveryConfig,
   city: string,
   keywords: KeywordOpportunity[],
@@ -91,22 +90,22 @@ Data:
 ${JSON.stringify(keywords.slice(0, 30), null, 2)}
 
 Task:
-Identify the top 10 content opportunities (blog posts, landing pages, or local guides).
+- Using the data provided, identify the top 10 content opportunities (blog posts, landing pages, or local guides).
+
 Return ONLY a JSON object with an "opportunities" array.
-Each object MUST have: "title", "topic", "target_keywords" (array), "reasoning", "priority" ("High"|"Medium"|"Low").
+  - Each object MUST have: "title", "topic", "target_keywords" (array), "reasoning", "priority" ("High"|"Medium"|"Low").
 `;
 
-  const response = await client.messages.create({
-    // model: "claude-3-5-sonnet-20241022",
-    model: "claude-sonnet-4-5",
-    max_tokens: 5000,
-    messages: [{ role: "user", content: prompt }],
+  const response = await ollama.generate({
+    model: "deepseek-r1:14b",
+    prompt: prompt,
+    stream: true,
   });
 
-  const text = response.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+  let text = "";
+  for await (const part of response) {
+    text += part.response;
+  }
 
   const parsed = extractJson(text);
   if (!parsed) {
@@ -124,7 +123,6 @@ Each object MUST have: "title", "topic", "target_keywords" (array), "reasoning",
  * Main Discovery Pipeline
  */
 async function runMonthlyDiscovery() {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const startTime = Date.now();
 
   const sheets = getSheetsClient();
@@ -182,8 +180,7 @@ async function runMonthlyDiscovery() {
           await writeKeywordMatrix(site.siteId, city, prioritised);
 
           // AI Analysis
-          const { opportunities } = await analyzeWithClaude(
-            anthropic,
+          const { opportunities } = await analyzeWithAI(
             site,
             city,
             prioritised,
