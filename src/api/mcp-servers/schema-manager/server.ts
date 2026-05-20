@@ -1,46 +1,4 @@
-const SERVER_NAME = "schema-manager";
-const SERVER_VERSION = "1.0.0";
-
-// ── WP Auth helper ────────────────────────────────────────────────────
-export function getWpAuth(siteId: number | string): {
-  baseUrl: string;
-  authHeader: string;
-} {
-  const urlKey = `CMS_API_URL_SITE_${siteId}`;
-  const keyKey = `CMS_API_KEY_SITE_${siteId}`;
-  const baseUrl = process.env[urlKey]?.trim();
-  const apiKey = process.env[keyKey]?.trim();
-  if (!baseUrl) throw new Error(`Missing env var ${urlKey}`);
-  if (!apiKey) throw new Error(`Missing env var ${keyKey}`);
-  const authHeader = `Basic ${Buffer.from(apiKey).toString("base64")}`;
-  return { baseUrl, authHeader };
-}
-
-// ── WP REST API fetch helper ──────────────────────────────────────────
-export async function wpFetch(
-  siteId: number | string,
-  method: string,
-  endpoint: string,
-  body?: object,
-): Promise<unknown> {
-  const { baseUrl, authHeader } = getWpAuth(siteId);
-  const url = `${baseUrl}${endpoint}`;
-  const options: RequestInit = {
-    method,
-    headers: {
-      Authorization: authHeader,
-      "Content-Type": "application/json",
-    },
-  };
-  if (body) options.body = JSON.stringify(body);
-  const res = await fetch(url, options);
-  const data = await res.json();
-  if (!res.ok) {
-    const errMsg = data.message ?? res.statusText;
-    throw new Error(`WP API error ${res.status}: ${errMsg}`);
-  }
-  return data;
-}
+import { wpFetch } from "../../libs/wordpress.js";
 
 // ── Page type detection ────────────────────────────────────────────────
 export type PageType =

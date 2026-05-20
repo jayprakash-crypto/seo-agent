@@ -1,12 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -14,13 +9,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  LineChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
-import { SITES } from "@/lib/sites";
+import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
+import { useGetSite, useGetSites } from "@/lib/sites";
 import { proxyFetch } from "@/lib/api";
 
 interface SiteMetrics {
@@ -33,9 +23,17 @@ interface SiteMetrics {
   last_updated: string;
 }
 
-function Sparkline({ data }: { data: Array<{ date: string; clicks: number }> }) {
+function Sparkline({
+  data,
+}: {
+  data: Array<{ date: string; clicks: number }>;
+}) {
   if (!data || data.length === 0) {
-    return <div className="h-10 text-xs text-muted-foreground flex items-center">No traffic data</div>;
+    return (
+      <div className="h-10 text-xs text-muted-foreground flex items-center">
+        No traffic data
+      </div>
+    );
   }
   return (
     <ResponsiveContainer width="100%" height={100}>
@@ -68,7 +66,8 @@ function SiteDetailDrawer({
   open: boolean;
   onClose: () => void;
 }) {
-  const site = SITES[siteId];
+  const site = useGetSite(siteId);
+
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent side="right" className="w-[400px] sm:w-[540px]">
@@ -102,7 +101,9 @@ function SiteDetailDrawer({
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Open Alerts</p>
-              <p className={`text-2xl font-bold ${metrics.open_alerts > 0 ? "text-red-600" : "text-green-600"}`}>
+              <p
+                className={`text-2xl font-bold ${metrics.open_alerts > 0 ? "text-red-600" : "text-green-600"}`}
+              >
                 {metrics.open_alerts}
               </p>
             </div>
@@ -114,8 +115,7 @@ function SiteDetailDrawer({
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Last updated:{" "}
-            {new Date(metrics.last_updated).toLocaleString()}
+            Last updated: {new Date(metrics.last_updated).toLocaleString()}
           </p>
         </div>
       </SheetContent>
@@ -130,7 +130,7 @@ function SiteCard({
   metrics: SiteMetrics;
   onClick: () => void;
 }) {
-  const site = SITES[metrics.site_id];
+  const site = useGetSite(metrics.site_id);
 
   return (
     <Card
@@ -183,13 +183,16 @@ export default function SiteOverview() {
   const [metrics, setMetrics] = useState<SiteMetrics[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSite, setSelectedSite] = useState<number | null>(null);
+  const sites = useGetSites();
 
   const fetchMetrics = useCallback(async () => {
     try {
-      const siteIds = Object.keys(SITES).map(Number);
+      console.log("ids", sites);
       const results = await Promise.all(
-        siteIds.map(async (id) => {
-          const res = await proxyFetch(`/api/sites/${id}/overview`);
+        sites.map(async (site) => {
+          const res = await proxyFetch(
+            `/api/sites/${site.id}/overview?site_url=${encodeURIComponent(site.url)}`,
+          );
           return res.json() as Promise<SiteMetrics>;
         }),
       );
@@ -199,7 +202,7 @@ export default function SiteOverview() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [useGetSites, useGetSite]);
 
   useEffect(() => {
     void fetchMetrics();

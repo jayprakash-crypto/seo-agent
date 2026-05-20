@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 
-const TAB = "Keywords";
+const TAB = "Keywords Config";
 // Columns: A=site_id  B=domain  C=target_keywords
 const RANGE_ALL = `'${TAB}'!A:C`;
 
 function getAuth() {
-  const raw = process.env.GSC_OAUTH_SITE_1;
-  if (!raw) throw new Error("Missing GSC_OAUTH_SITE_1");
+  const raw = process.env.GSC_OAUTH_SITE;
+  if (!raw) throw new Error("Missing GSC_OAUTH_SITE");
   return new google.auth.GoogleAuth({
     credentials: JSON.parse(raw) as object,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
 }
 
-function getSpreadsheetId(site_id: number) {
-  const key = `SHEETS_ID_${site_id}`;
+function getSpreadsheetId() {
+  const key = `SHEETS_ID`;
   const id = process.env[key];
   if (!id) throw new Error(`Missing ${key}`);
   return id;
@@ -31,12 +31,9 @@ async function getSheetGid(spreadsheetId: string): Promise<number> {
 
 export async function GET(req: NextRequest) {
   try {
-    const params = req.nextUrl.searchParams;
-    const siteId = params.get("siteIds") || "1";
-
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
     const { data } = await sheets.spreadsheets.values.get({
-      spreadsheetId: getSpreadsheetId(Number(siteId)),
+      spreadsheetId: getSpreadsheetId(),
       range: RANGE_ALL,
     });
 
@@ -67,7 +64,7 @@ export async function POST(req: NextRequest) {
     const { rowIndex, site_id, domain = "", target_keywords = "" } = body;
 
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
-    const spreadsheetId = getSpreadsheetId(1);
+    const spreadsheetId = getSpreadsheetId();
 
     const values = [[Number(site_id), domain, target_keywords]];
 
@@ -100,7 +97,7 @@ export async function DELETE(req: NextRequest) {
     const { rowIndex } = (await req.json()) as { rowIndex: number };
     if (!rowIndex) return NextResponse.json({ error: "rowIndex is required" }, { status: 400 });
 
-    const spreadsheetId = getSpreadsheetId(1);
+    const spreadsheetId = getSpreadsheetId();
     const sheetId = await getSheetGid(spreadsheetId);
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
 

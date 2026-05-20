@@ -1,10 +1,33 @@
 import { google } from "googleapis";
 
-// ── Sheets helpers ─────────────────────────────────────────────────────
-export function getSheetsClient(siteId: number) {
-  const envKey = `GSC_OAUTH_SITE_${siteId}`;
+function getGSCAuth() {
+  const envKey = `GSC_OAUTH_SITE`;
   const raw = process.env[envKey];
-  if (!raw) throw new Error(`Missing env var ${envKey} for site_id=${siteId}`);
+  if (!raw) {
+    throw new Error(`Missing env var ${envKey}`);
+  }
+  return raw;
+}
+
+// ── GSC helpers ──────────────────────────────────────────────────────
+export function getGscAuth() {
+  const raw = getGSCAuth();
+  const credentials = JSON.parse(raw);
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
+  });
+  return auth;
+}
+
+export function getSearchConsoleClient() {
+  const auth = getGscAuth();
+  return google.searchconsole({ version: "v1", auth });
+}
+
+// ── Sheets helpers ─────────────────────────────────────────────────────
+export function getSheetsClient() {
+  const raw = getGSCAuth();
   const credentials = JSON.parse(raw);
   const auth = new google.auth.GoogleAuth({
     credentials,

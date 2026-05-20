@@ -1,10 +1,5 @@
 import fs from "node:fs";
-import { google } from "googleapis";
-
-import { SITES } from "../../sites_config.js";
-
-const SERVER_NAME = "competitor-intel";
-const SERVER_VERSION = "1.0.0";
+import { getSearchConsoleClient } from "../../libs/google.js";
 
 // ── Rate-limit delay ──────────────────────────────────────────────────
 const AHREFS_DELAY_MS = Number(process.env.AHREFS_DELAY_MS ?? 1500);
@@ -67,25 +62,6 @@ export async function ahrefsFetch(
   return res.json();
 }
 
-// ── GSC Auth helpers ──────────────────────────────────────────────────
-export function getGscAuth(siteId: number | string) {
-  const envKey = `GSC_OAUTH_SITE_${siteId}`;
-  const raw = process.env[envKey];
-  if (!raw) throw new Error(`Missing env var ${envKey} for site_id=${siteId}`);
-  const credentials = JSON.parse(raw);
-  return new google.auth.GoogleAuth({
-    credentials,
-    scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
-  });
-}
-
-export function getSiteUrl(siteId: number | string) {
-  const map: Record<string, string>  = SITES;
-  const url = map[String(siteId)];
-  if (!url) throw new Error(`Unknown site_id=${siteId}`);
-  return url;
-}
-
 // ── Tool: get_competitor_keywords ────────────────────────────────────
 export type AhrefsKeyword = {
   keyword: string;
@@ -119,14 +95,14 @@ export async function getCompetitorKeywords(
   await ahrefsDelay();
 
   console.log("========== Calling Ahrefs API **********");
-  const raw = await ahrefsFetch("/site-explorer/organic-keywords", {
+  const raw = (await ahrefsFetch("/site-explorer/organic-keywords", {
     target: competitorDomain,
     limit: "50",
     mode: "domain",
     output: "json",
     date: new Date().toISOString().split("T")[0], // Use current date for freshest data
     select: "keyword,best_position,sum_traffic,volume",
-  }) as {
+  })) as {
     keywords?: Array<{
       keyword: string;
       best_position?: number;
@@ -163,6 +139,7 @@ export type KeywordGap = {
 
 export async function getKeywordGaps(
   siteId: number,
+  siteUrl: string,
   competitorDomain: string,
 ): Promise<{
   site_id: number;
@@ -173,10 +150,8 @@ export async function getKeywordGaps(
   gaps: KeywordGap[];
 }> {
   // Fetch site's own keywords via GSC
-  const auth = getGscAuth(siteId);
   console.log("========== Keywords Gap GSC Auth **********");
-  const siteUrl = getSiteUrl(siteId);
-  const searchConsole = google.searchconsole({ version: "v1", auth });
+  const searchConsole = getSearchConsoleClient();
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - 28);
@@ -255,13 +230,13 @@ export async function getCompetitorBacklinks(
 
   await ahrefsDelay();
 
-  const raw = await ahrefsFetch("/site-explorer/all-backlinks", {
+  const raw = (await ahrefsFetch("/site-explorer/all-backlinks", {
     target: competitorDomain,
     limit: "50",
     mode: "domain",
     output: "json",
     select: "anchor,url_from,url_to,domain_rating_source,domain_rating_target",
-  }) as {
+  })) as {
     backlinks?: Array<{
       url_from?: string;
       url_to?: string;
@@ -324,6 +299,7 @@ function extractTopic(keyword: string): string {
 
 export async function getContentGaps(
   siteId: number,
+  siteUrl: string,
   competitorDomain: string,
 ): Promise<{
   site_id: number;
@@ -336,7 +312,7 @@ export async function getContentGaps(
     avg_volume: number;
   }>;
 }> {
-  const gapResult = await getKeywordGaps(siteId, competitorDomain);
+  const gapResult = await getKeywordGaps(siteId, siteUrl, competitorDomain);
   const gaps = gapResult.gaps;
 
   // Cluster by first meaningful word
@@ -369,22 +345,33 @@ export async function getContentGaps(
   };
 }
 
-const getKeywordsGapForCompetitorDomain = async (siteId: number, competitorDomains: string[]) => {
+const getKeywordsGapForCompetitorDomain = async (
+  siteId: number,
+  siteUrl: string,
+  competitorDomains: string[],
+) => {
   const keywordGaps = await Promise.all(
-    competitorDomains.map((domain) => getKeywordGaps(siteId, domain)),
+    competitorDomains.map((domain) => getKeywordGaps(siteId, siteUrl, domain)),
   );
 
   return keywordGaps;
 };
 
-const getContentsGapForCompetitorDomain = async (siteId: number, competitorDomains: string[]) => {
+const getContentsGapForCompetitorDomain = async (
+  siteId: number,
+  siteUrl: string,
+  competitorDomains: string[],
+) => {
   const contentGaps = await Promise.all(
-    competitorDomains.map((domain) => getContentGaps(siteId, domain)),
+    competitorDomains.map((domain) => getContentGaps(siteId, siteUrl, domain)),
   );
   return contentGaps;
 };
 
-const getBacklinksForCompetitorDomain = async (siteId: number, competitorDomains: string[]) => {
+const getBacklinksForCompetitorDomain = async (
+  siteId: number,
+  competitorDomains: string[],
+) => {
   const backlinks = await Promise.all(
     competitorDomains.map((domain) => getCompetitorBacklinks(siteId, domain)),
   );

@@ -113,8 +113,13 @@ async function callWithRetry(
 async function step1KeywordRankings(client: Anthropic, siteId: number) {
   console.log(`\n[step1] Getting keyword rankings for site_id=${siteId}...`);
   const siteKeywords = sitesKeywordsConfig[siteId].keywords || [];
+  const site = sitesConfig.find((site) => site.site_id === siteId);
 
-  const keywordRanking = await getKeywordRankings(siteId, siteKeywords);
+  const keywordRanking = await getKeywordRankings(
+    siteId,
+    site?.domain as string,
+    siteKeywords,
+  );
 
   console.log(`[step1] Done`);
   return {
@@ -128,8 +133,13 @@ async function step1KeywordRankings(client: Anthropic, siteId: number) {
 // ── Step 2: CMS Connector ─────────────────────────────────────────────
 async function step2CmsConnector(client: Anthropic, siteId: number) {
   console.log(`\n[step2] Analyzing low-CTR pages for site_id=${siteId}...`);
+  const site = sitesConfig.find((site) => site.site_id === siteId);
 
-  const impressionsVsCtr = await getPagesWithHighImpressionLowCtr(siteId, 28);
+  const impressionsVsCtr = await getPagesWithHighImpressionLowCtr(
+    siteId,
+    site?.domain as string,
+    28,
+  );
   const pages = await Promise.all(
     impressionsVsCtr.map(async (row: any) => {
       const page = await getPage(siteId, row.url);
@@ -148,32 +158,41 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
   - minimum content should be 1500 words
   */
 
-  const response = await callWithRetry(client, "step2", {
-    model: "claude-sonnet-4-5",
-    max_tokens: 10000,
-    messages: [
-      {
-        role: "user",
-        content: `You are an SEO content analyst for site_id=${siteId}.
+  if (pages.length === 0) {
+    console.log(`[step2] No pages found for site_id=${siteId}.`);
+    return { opportunities: [], summary: "No pages identified." };
+  }
+
+  const prompt = `You are an SEO content analyst for site_id=${siteId}, site name is ${site?.brand_name}.
   Here are the rules for SEO content:
   - primary keywords must be present in title
   - primary keywords must be present in meta description
 
   ${JSON.stringify(pages)}
 
-  - For each page from data above, follow the rules and write an improved title (max 60 chars) and meta description (max 155 chars) to increase CTR
+  For each page from data above, follow the rules
+  - write an improved title (max 60 chars) and meta description (max 155 chars) to increase CTR
 
   Return ONLY a JSON object with keys:
   - opportunities: array of objects with keywords(secondary keywords), url, current_ctr, impressions, current_title, current_description, suggested_title, suggested_description, reasoning, priority (1-3 based on potential impact)
   - summary: string with 2-3 overall action items
 
-  No extra text.`,
+  No extra text.`;
+
+  const response = await callWithRetry(client, "step2", {
+    model: "claude-haiku-4-5",
+    max_tokens: 10000,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
       },
     ],
     betas: ["mcp-client-2025-04-04"],
   });
 
   console.log("Stop Reason: ", response.stop_reason);
+  console.log("Usage: ", response.usage);
 
   const text = response.content
     .filter((block) => block.type === "text")
@@ -255,6 +274,7 @@ async function step3SchemaManager(
 // ── Step 4: Competitor Intel ──────────────────────────────────────────
 async function step4CompetitorIntel(client: Anthropic, siteId: number) {
   console.log(`\n[step4] Running competitor analysis for site_id=${siteId}...`);
+  const site = sitesConfig.find((site) => site.site_id === siteId);
 
   const siteCompetitors =
     sitesCompetitorsConfig[siteId].competitors_domain || [];
@@ -267,11 +287,13 @@ async function step4CompetitorIntel(client: Anthropic, siteId: number) {
 
   const keywordGaps = await getKeywordsGapForCompetitorDomain(
     siteId,
+    site?.domain as string,
     siteCompetitors,
   );
 
   const contentGaps = await getContentsGapForCompetitorDomain(
     siteId,
+    site?.domain as string,
     siteCompetitors,
   );
 
@@ -346,37 +368,33 @@ async function step5Reporting(
         role: "user",
         content: `You are an SEO reporting agent for site_id=${siteId}.
 
-Here is all data collected this week:
+  Here is all data collected this week:
 
-## Module 1 — Keyword Performance
-${JSON.stringify(keywords.rankings, null, 2)}
+  ## Module 1 — Keyword Performance
+  ${JSON.stringify(keywords.rankings, null, 2)}
 
-## Module 2 — CMS Meta Suggestions (low-CTR pages)
-${cmsOpportunities.length ? JSON.stringify(cmsOpportunities, null, 2) : "No opportunities identified."}
+  ## Module 2 — CMS Meta Suggestions (low-CTR pages)
+  ${cmsOpportunities.length ? JSON.stringify(cmsOpportunities, null, 2) : "No opportunities identified."}
 
-## Module 3 — Schema Gaps
-${schemaPages.length ? JSON.stringify(schemaPages, null, 2) : "No schema gap data."}
-PAA questions identified: ${paaQuestions.length ? JSON.stringify(paaQuestions.slice(0, 5)) : "None"}
+  ## Module 3 — Schema Gaps
+  ${schemaPages.length ? JSON.stringify(schemaPages, null, 2) : "No schema gap data."}
+  PAA questions identified: ${paaQuestions.length ? JSON.stringify(paaQuestions.slice(0, 5)) : "None"}
 
-## Module 4 — Competitor Intelligence
-Competitors Keyword gaps: ${competitorKeywordGaps.length ? JSON.stringify(competitorKeywordGaps.slice(0, 5), null, 2) : "No gaps identified."}
-Competitors Content gaps: ${competitorContentGaps.length ? JSON.stringify(competitorContentGaps.slice(0, 5), null, 2) : "No content gaps."}
+  ## Module 4 — Competitor Intelligence
+  Competitors Keyword gaps: ${competitorKeywordGaps.length ? JSON.stringify(competitorKeywordGaps.slice(0, 5), null, 2) : "No gaps identified."}
+  Competitors Content gaps: ${competitorContentGaps.length ? JSON.stringify(competitorContentGaps.slice(0, 5), null, 2) : "No content gaps."}
 
-Please do all of the following in order:
-1. From above data, create a concise summary of key insights and recommendations for next week (3-5 sentences).
-2. For every module, write a recommendation with site_id=${siteId}, module=<module_name>, a concise recommendation from the module data
+  Please do all of the following in order:
+  1. From above data, create a concise summary of key insights and recommendations for next week (3-5 sentences).
+  2. For every module, write a recommendation with site_id=${siteId}, module=<module_name>, a concise recommendation from the module data
 
-Return ONLY a JSON object with keys:
-- summary: string with concise insights and recommendations
-- recommendations: array of objects with module, recommendation_text
-
-`,
+  Return ONLY a JSON object with keys:
+  - summary: string with concise insights and recommendations
+  - recommendations: array of objects with module, recommendation_text`,
       },
     ],
     betas: ["mcp-client-2025-04-04"],
   });
-
-  console.log("Stop Reason: ", response.stop_reason);
 
   const text = response.content
     .filter((block) => block.type === "text")
@@ -390,7 +408,9 @@ Return ONLY a JSON object with keys:
 
   await writeRecommendationsToSheet(siteId, parsed.recommendations);
 
-  await postWeeklyMessageToSlack(siteId, {
+  const site = sitesConfig.find((site) => site.site_id === siteId);
+
+  await postWeeklyMessageToSlack(siteId, site?.domain as string, {
     rankings: keywords.rankings || [],
     cmsOpportunities: (cmsData || {}).opportunities || [],
     schemaGaps: (schemaData || {}).pages || [],
@@ -502,7 +522,7 @@ async function runWeeklyTasks(siteId: number) {
 
 export async function weeklyTasks() {
   // Getting Google sheets data
-  const sheets = getSheetsClient(1);
+  const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
   const { data } = await sheets.spreadsheets.values.batchGet({
@@ -529,7 +549,7 @@ export async function weeklyTasks() {
     datas
       .find((item) => item.tabName === "'Sites Config'")
       ?.rows?.map((site) => ({
-        site_id: site[0],
+        site_id: Number(site[0]),
         domain: site[1],
         brand_name: site[2],
         industry: site[3],
@@ -540,7 +560,7 @@ export async function weeklyTasks() {
     .find((item) => item.tabName === "'Keywords Config'")
     ?.rows?.forEach((site) => {
       sitesKeywordsConfig[site[0]] = {
-        site_id: site[0],
+        site_id: Number(site[0]),
         domain: site[1],
         keywords: site[2]?.split(","),
       };
@@ -550,15 +570,15 @@ export async function weeklyTasks() {
     .find((item) => item.tabName === "'Competitors Config'")
     ?.rows?.forEach((site) => {
       sitesCompetitorsConfig[site[0]] = {
-        site_id: site[0],
+        site_id: Number(site[0]),
         domain: site[1],
         competitors_domain: site[2]?.split(","),
       };
     }) || [];
 
-  // sitesConfig.map((site: SitesConfig) => {
-  runWeeklyTasks(1);
-  // });
+  for (const site of sitesConfig) {
+    await runWeeklyTasks(site.site_id);
+  }
 }
 
 // ── Execute ───────────────────────────────────────────────────────────

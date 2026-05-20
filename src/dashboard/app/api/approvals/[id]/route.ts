@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API = process.env.APPROVALS_API_URL ?? "http://localhost:3002";
+const API = process.env.BACKEND_API_URL ?? "http://localhost:3002";
 
 type Params = { params: Promise<{ id: string }> };
 

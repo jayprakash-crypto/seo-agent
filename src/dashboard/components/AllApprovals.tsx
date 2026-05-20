@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getSocket } from "@/lib/socket";
-import { getSiteName } from "@/lib/sites";
+import { useGetSiteName } from "@/lib/sites";
 import {
   Table,
   TableBody,
@@ -275,6 +275,8 @@ const CollapsibleRow = ({
   rowData: Approval;
   rowCount: number;
 }) => {
+  const siteName = useGetSiteName(rowData.site_id);
+
   const priority = PRIORITY_MAP[rowData.priority] ?? PRIORITY_MAP[3];
 
   return (
@@ -288,7 +290,7 @@ const CollapsibleRow = ({
         </TableCell>
 
         <TableCell className="hidden text-xs sm:table-cell">
-          {getSiteName(rowData.site_id)}
+          {siteName}
         </TableCell>
         <TableCell className="hidden text-xs md:table-cell">
           {rowData.module}
@@ -333,7 +335,7 @@ const CollapsibleRow = ({
                   <Badge variant="outline">{rowData.module}</Badge>
                   <Badge variant="secondary">{rowData.type}</Badge>
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {getSiteName(rowData.site_id)} ·{" "}
+                    {siteName} ·{" "}
                     {new Date(rowData.created_at).toLocaleDateString()}
                   </span>
                 </div>

@@ -1,31 +1,4 @@
-import { google } from "googleapis";
-
-import { SITES } from "../../sites_config.js";
-
-const SERVER_NAME = "keyword-tracker";
-const SERVER_VERSION = "1.0.0";
-
-// ── GSC Auth helper ────────────────────────────────────────────────────
-export function getGscAuth(siteId: number | string) {
-  const envKey = `GSC_OAUTH_SITE_${siteId}`;
-  const raw = process.env[envKey];
-  if (!raw) {
-    throw new Error(`Missing env var ${envKey} for site_id=${siteId}`);
-  }
-  const credentials = JSON.parse(raw);
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
-  });
-  return auth;
-}
-
-export function getSiteUrl(siteId: number | string): string {
-  const map: Record<string, string> = SITES;
-  const url = map[String(siteId)];
-  if (!url) throw new Error(`Unknown site_id=${siteId}`);
-  return url;
-}
+import { getSearchConsoleClient } from "../../libs/google.js";
 
 export function validateSiteId(siteId: unknown): number {
   const id = Number(siteId);
@@ -37,7 +10,7 @@ export function validateSiteId(siteId: unknown): number {
 
 // ── Tool implementations ──────────────────────────────────────────────
 
-export async function getRankings(siteId: number, keywords: string[]) {
+export async function getRankings(siteId: number, siteUrl: string, keywords: string[]) {
   if (!Array.isArray(keywords) || keywords.length === 0) {
     throw new Error("keywords must be a non-empty array");
   }
@@ -46,9 +19,7 @@ export async function getRankings(siteId: number, keywords: string[]) {
     "============= Ranking GSC Auth *************** site_id:",
     siteId,
   );
-  const auth = getGscAuth(siteId);
-  const siteUrl = getSiteUrl(siteId);
-  const searchConsole = google.searchconsole({ version: "v1", auth });
+  const searchConsole = getSearchConsoleClient();
 
   const endDate = new Date();
   const startDate = new Date();
@@ -58,7 +29,7 @@ export async function getRankings(siteId: number, keywords: string[]) {
 
   console.log("============= Ranking GSC Search Query ***************");
   const results = await Promise.all(
-    keywords.map(async (keyword) => {
+    keywords.slice(0, 200).map(async (keyword) => {
       const response = await searchConsole.searchanalytics.query({
         siteUrl,
         requestBody: {
@@ -96,6 +67,7 @@ export async function getRankings(siteId: number, keywords: string[]) {
 
 export async function getRankingHistory(
   siteId: number,
+  siteUrl: string,
   keyword: string,
   days: number,
 ) {
@@ -110,9 +82,7 @@ export async function getRankingHistory(
     "============= Ranking History GSC Auth *************** site_id:",
     siteId,
   );
-  const auth = getGscAuth(siteId);
-  const siteUrl = getSiteUrl(siteId);
-  const searchConsole = google.searchconsole({ version: "v1", auth });
+  const searchConsole = getSearchConsoleClient();
 
   const endDate = new Date();
   const startDate = new Date();
@@ -160,6 +130,7 @@ export async function getRankingHistory(
 
 export async function getTopMovers(
   siteId: number,
+  siteUrl: string,
   threshold: number,
   direction: "up" | "down" | "both",
 ) {
@@ -171,9 +142,7 @@ export async function getTopMovers(
   }
 
   console.log("============= Top GSC Auth *************** site_id:", siteId);
-  const auth = getGscAuth(siteId);
-  const siteUrl = getSiteUrl(siteId);
-  const searchConsole = google.searchconsole({ version: "v1", auth });
+  const searchConsole = getSearchConsoleClient();
 
   const fmt = (d: Date) => d.toISOString().split("T")[0];
 
@@ -257,7 +226,12 @@ export async function getTopMovers(
   };
 }
 
-export async function getRankVelocity(siteId: number, keyword: string, windowDays: number) {
+export async function getRankVelocity(
+  siteId: number,
+  siteUrl: string,
+  keyword: string,
+  windowDays: number,
+) {
   if (!keyword || typeof keyword !== "string") {
     throw new Error("keyword must be a non-empty string");
   }
@@ -265,7 +239,7 @@ export async function getRankVelocity(siteId: number, keyword: string, windowDay
     throw new Error("window_days must be an integer between 2 and 90");
   }
 
-  const history = await getRankingHistory(siteId, keyword, windowDays);
+  const history = await getRankingHistory(siteId, siteUrl, keyword, windowDays);
   const points = history.history.filter((h) => h.position !== null);
 
   if (points.length < 2) {
@@ -313,13 +287,13 @@ export async function getRankVelocity(siteId: number, keyword: string, windowDay
   };
 }
 
-const getKeywordRankings = async (site_id: number, keywords: string[]) => {
+const getKeywordRankings = async (site_id: number, site_url: string, keywords: string[]) => {
   const siteId = validateSiteId(site_id);
 
   if (!Array.isArray(keywords)) throw new Error("keywords must be an array");
 
   console.log("========== GET RANKINGS ==========");
-  return await getRankings(siteId, keywords);
+  return await getRankings(siteId, site_url, keywords);
 };
 
 export { getKeywordRankings };

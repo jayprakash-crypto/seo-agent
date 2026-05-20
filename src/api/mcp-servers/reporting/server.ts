@@ -1,12 +1,5 @@
 import https from "node:https";
-import { google } from "googleapis";
-
-import { SITES } from "../../sites_config.js";
-
-const SERVER_NAME = "reporting";
-const SERVER_VERSION = "1.0.0";
-
-const sites: Record<string, string> = SITES;
+import { getSheetsClient } from "../../libs/google.js";
 
 type SlackResponse = {
   ok: boolean;
@@ -51,20 +44,6 @@ export async function callSlackApi(
   });
 }
 
-// ── Sheets helpers ─────────────────────────────────────────────────────
-function getSheetsClient(siteId: number) {
-  const envKey = `GSC_OAUTH_SITE_${siteId}`;
-  const raw = process.env[envKey];
-  if (!raw) throw new Error(`Missing env var ${envKey} for site_id=${siteId}`);
-  const credentials = JSON.parse(raw);
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-
-  return google.sheets({ version: "v4", auth });
-}
-
 function getSpreadsheetId() {
   const id = process.env.SHEETS_ID?.trim();
   if (!id) throw new Error("Missing env var SHEETS_ID");
@@ -106,7 +85,11 @@ function sectionBlock(text: string) {
   return { type: "section", text: { type: "mrkdwn", text: slackTrunc(text) } };
 }
 
-export function createWeeklyDigest(siteId: number, data: Record<string, any>) {
+export function createWeeklyDigest(
+  siteId: number,
+  siteUrl: string,
+  data: Record<string, any>,
+) {
   const today = new Date().toISOString().split("T")[0];
   const { rankings, summary, cmsOpportunities, schemaGaps, competitorsAlerts } =
     data || {};
@@ -159,7 +142,7 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
       type: "header",
       text: {
         type: "plain_text",
-        text: `Weekly SEO Report — ${sites[String(siteId)] ?? `Site ${siteId}`}`,
+        text: `Weekly SEO Report — ${siteUrl ?? `Site ${siteId}`}`,
         emoji: true,
       },
     },
@@ -198,13 +181,12 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
     site_id: siteId,
     date: today,
     blocks,
-    fallback_text: `Weekly SEO Report — Site ${sites[String(siteId)] ?? `Site ${siteId}`} — ${today}`,
+    fallback_text: `Weekly SEO Report — Site ${siteUrl ?? `Site ${siteId}`} — ${today}`,
     message: "",
   };
 }
 
 export function createMonthlyDiscoveryDigest(
-  siteId: number,
   data: Record<string, any>,
 ) {
   const today = new Date().toISOString().split("T")[0];
@@ -216,7 +198,7 @@ export function createMonthlyDiscoveryDigest(
       type: "header",
       text: {
         type: "plain_text",
-        text: `Monthly City wise Keyword Discovery — ${sites[String(siteId)] ?? `Site ${siteId}`}`,
+        text: `Monthly City wise Keyword Discovery`,
         emoji: true,
       },
     },
@@ -236,10 +218,9 @@ export function createMonthlyDiscoveryDigest(
   console.log("========== Monthly Discovery Digest Created **********");
 
   return {
-    site_id: siteId,
     date: today,
     blocks,
-    fallback_text: `Monthly City wise Keyword Discovery — Site ${sites[String(siteId)] ?? `Site ${siteId}`} — ${today}`,
+    fallback_text: `Monthly City wise Keyword Discovery — ${today}`,
     message: "",
   };
 }
@@ -250,7 +231,7 @@ export async function writeToSheet(
   rows: unknown[][],
 ) {
   console.log("============= Sheets GSC Auth *************** site_id:", siteId);
-  const sheets = getSheetsClient(siteId);
+  const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
   console.log("========== Appending to Sheet **********");
@@ -286,9 +267,10 @@ export async function logRecommendation(
 
 const postWeeklyMessageToSlack = async (
   site_id: number,
+  site_url: string,
   data: Record<string, any>,
 ) => {
-  const messageData = createWeeklyDigest(site_id, data);
+  const messageData = createWeeklyDigest(site_id, site_url, data);
 
   const { message = "", blocks = [], fallback_text } = messageData;
 
@@ -296,10 +278,9 @@ const postWeeklyMessageToSlack = async (
 };
 
 const postMonthlyDiscoveryToSlack = async (
-  site_id: number,
   data: Record<string, any>,
 ) => {
-  const messageData = createMonthlyDiscoveryDigest(site_id, data);
+  const messageData = createMonthlyDiscoveryDigest(data);
 
   const { message = "", blocks = [], fallback_text } = messageData;
 

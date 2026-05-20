@@ -1,23 +1,9 @@
 /**
  * WordPress service — HTTP calls to the WordPress REST API.
- * Credentials are read from env vars: CMS_API_URL_SITE_<id> and CMS_API_KEY_SITE_<id>.
  */
 
-// ── Auth helper ───────────────────────────────────────────────────────
-function getWpAuth(siteId: number | string): {
-  baseUrl: string;
-  authHeader: string;
-} {
-  const urlKey = `CMS_API_URL_SITE_${siteId}`;
-  const keyKey = `CMS_API_KEY_SITE_${siteId}`;
-  const baseUrl = process.env[urlKey]?.trim();
-  const apiKey = process.env[keyKey]?.trim();
-  if (!baseUrl) throw new Error(`Missing env var ${urlKey}`);
-  if (!apiKey) throw new Error(`Missing env var ${keyKey}`);
-  // apiKey format: "username:application_password"
-  const authHeader = `Basic ${Buffer.from(apiKey).toString("base64")}`;
-  return { baseUrl, authHeader };
-}
+import { getWpAuth } from "../libs/wordpress.js";
+
 
 // ── Result types ──────────────────────────────────────────────────────
 export interface UpdatePageMetaResult {
@@ -42,7 +28,7 @@ export interface UpdatePageMetaError {
  * standard WP REST API — the plugin calls update_post_meta() directly.
  */
 export async function updatePageMeta(
-  siteId: number | string,
+  siteId: number,
   pageUrl: string,
   title: string,
   description: string,

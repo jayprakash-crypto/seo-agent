@@ -1,11 +1,9 @@
-import { google } from "googleapis";
+import { ahrefsFetch, ahrefsDelay } from "../competitor-intel/server.js";
 import {
-  ahrefsFetch,
-  ahrefsDelay,
-  getGscAuth,
-  getSiteUrl,
-} from "../competitor-intel/server.js";
-import { getSheetsClient, getSpreadsheetId } from "../../libs/google.js";
+  getSearchConsoleClient,
+  getSheetsClient,
+  getSpreadsheetId,
+} from "../../libs/google.js";
 
 export interface KeywordOpportunity {
   keyword: string;
@@ -44,6 +42,7 @@ function extractTopic(keyword: string): string {
  */
 export async function discoverCityKeywords(
   siteId: number,
+  siteUrl: string,
   city: string,
   service: string,
 ): Promise<KeywordOpportunity[]> {
@@ -70,9 +69,7 @@ export async function discoverCityKeywords(
   // Note: SerpAPI implementation would go here to expand the list
 
   // 3. Check current rankings in GSC to identify position gaps
-  const auth = getGscAuth(siteId);
-  const siteUrl = getSiteUrl(siteId);
-  const searchConsole = google.searchconsole({ version: "v1", auth });
+  const searchConsole = getSearchConsoleClient();
 
   const gscResponse = await searchConsole.searchanalytics.query({
     siteUrl,
@@ -149,7 +146,7 @@ export async function writeToSheet(
   rows: unknown[][],
 ) {
   console.log("============= Sheets GSC Auth *************** site_id:", siteId);
-  const sheets = getSheetsClient(siteId);
+  const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
   console.log("========== Appending to Sheet **********");
@@ -178,7 +175,7 @@ export async function writeKeywordMatrix(
   keywords: KeywordOpportunity[],
 ): Promise<{ success: boolean; rows_written: number }> {
   console.log(`  [city] Writing keywords to Sheets...`, keywords.length);
-  const sheets = getSheetsClient(siteId);
+  const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
   // Format data for Sheets: [Keyword, Volume, Difficulty, Position, Score, Cluster, City, Timestamp]
@@ -211,30 +208,3 @@ export async function writeKeywordMatrix(
   }
 }
 
-// /**
-//  * MCP Handler Export
-//  */
-// export const keywordResearcherHandlers = {
-//   discover_city_keywords: async (params: { site_id: number; city: string; service: string }) => {
-//     const data = await discoverCityKeywords(params.site_id, params.city, params.service);
-//     return { opportunities: data };
-//   },
-
-//   get_keyword_clusters: (params: { keywords: KeywordOpportunity[] }) => {
-//     return { clustered_keywords: getKeywordClusters(params.keywords) };
-//   },
-
-//   prioritise_keywords: (params: { keywords: KeywordOpportunity[] }) => {
-//     return { prioritised_keywords: prioritiseKeywords(params.keywords) };
-//   },
-
-//   write_keyword_matrix: async (params: { site_id: number; city: string; keywords: KeywordOpportunity[] }) => {
-//     return await writeKeywordMatrix(params.site_id, params.city, params.keywords);
-//   }
-// };
-
-// export default {
-//   name: "keyword-researcher",
-//   version: "1.0.0",
-//   handlers: keywordResearcherHandlers
-// };

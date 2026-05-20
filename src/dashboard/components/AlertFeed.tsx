@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getSocket } from "@/lib/socket";
-import { getSiteName } from "@/lib/sites";
+import { useGetSiteName } from "@/lib/sites";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ function AlertCard({
   onAction: () => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const siteName = useGetSiteName(alert.site_id);
 
   async function acknowledge() {
     setLoading(true);
@@ -68,7 +69,7 @@ function AlertCard({
           </Badge>
           <Badge variant="outline">{alert.module}</Badge>
           <span className="text-xs text-muted-foreground">
-            {getSiteName(alert.site_id)}
+            {siteName}
           </span>
           <span className="ml-auto text-xs text-muted-foreground">
             {new Date(alert.created_at).toLocaleTimeString([], {

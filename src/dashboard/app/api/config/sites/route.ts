@@ -6,16 +6,16 @@ const TAB = "Sites Config";
 const RANGE_ALL = `'${TAB}'!A:E`;
 
 function getAuth() {
-  const raw = process.env.GSC_OAUTH_SITE_1;
-  if (!raw) throw new Error("Missing GSC_OAUTH_SITE_1");
+  const raw = process.env.GSC_OAUTH_SITE;
+  if (!raw) throw new Error("Missing GSC_OAUTH_SITE");
   return new google.auth.GoogleAuth({
     credentials: JSON.parse(raw) as object,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
 }
 
-function getSpreadsheetId(site_id: number) {
-  const key = `SHEETS_ID_${site_id}`;
+function getSpreadsheetId() {
+  const key = `SHEETS_ID`;
   const id = process.env[key];
   if (!id) throw new Error(`Missing ${key}`);
   return id;
@@ -32,11 +32,9 @@ async function getSheetGid(spreadsheetId: string): Promise<number> {
 
 export async function GET(req: NextRequest) {
   try {
-    const siteId = Number(req.nextUrl.searchParams.get("siteIds") ?? 1);
-
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
     const { data } = await sheets.spreadsheets.values.get({
-      spreadsheetId: getSpreadsheetId(siteId),
+      spreadsheetId: getSpreadsheetId(),
       range: RANGE_ALL,
     });
 
@@ -78,7 +76,7 @@ export async function POST(req: NextRequest) {
     } = body;
 
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
-    const spreadsheetId = getSpreadsheetId(1);
+    const spreadsheetId = getSpreadsheetId();
 
     let resp;
 
@@ -121,9 +119,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { rowIndex, site_id } = (await req.json()) as {
+    const { rowIndex } = (await req.json()) as {
       rowIndex: number;
-      site_id: number;
     };
 
     if (!rowIndex) {
@@ -133,7 +130,7 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    const spreadsheetId = getSpreadsheetId(1);
+    const spreadsheetId = getSpreadsheetId();
     const sheetId = await getSheetGid(spreadsheetId);
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
 

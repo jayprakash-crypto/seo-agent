@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getSocket } from "@/lib/socket";
-import { getSiteName } from "@/lib/sites";
+import { useGetSiteName } from "@/lib/sites";
 import {
   Card,
   CardContent,
@@ -200,6 +200,8 @@ function ApprovalCard({
   approval: Approval;
   onAction: () => void;
 }) {
+  const siteName = useGetSiteName(approval.site_id);
+
   const [editOpen, setEditOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -254,8 +256,7 @@ function ApprovalCard({
             <Badge variant="outline">{approval.module}</Badge>
             <Badge variant="secondary">{approval.type}</Badge>
             <span className="ml-auto text-xs text-muted-foreground">
-              {getSiteName(approval.site_id)} ·{" "}
-              {new Date(approval.created_at).toLocaleDateString()}
+              {siteName} · {new Date(approval.created_at).toLocaleDateString()}
             </span>
           </div>
           <CardTitle className="mt-1 text-base">{approval.title}</CardTitle>

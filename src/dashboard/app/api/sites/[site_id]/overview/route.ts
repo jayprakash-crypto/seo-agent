@@ -1,27 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 
-function getAuth(siteId: string) {
-  const raw = process.env[`GSC_OAUTH_SITE_${siteId}`];
-  if (!raw) throw new Error(`Missing GSC_OAUTH_SITE_${siteId}`);
+function getAuth() {
+  const raw = process.env[`GSC_OAUTH_SITE`];
+  if (!raw) throw new Error(`Missing GSC_OAUTH_SITE`);
   return new google.auth.GoogleAuth({
     credentials: JSON.parse(raw),
     scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
   });
 }
 
-function getSiteUrl(siteId: string): string {
-  const map: Record<string, string> = { "1": "https://lifecircle.in" };
-  const url = map[siteId];
-  if (!url) throw new Error(`Unknown site_id=${siteId}`);
-  return url;
-}
-
 type Params = { params: Promise<{ site_id: string }> };
 
 export async function GET(req: NextRequest, { params }: Params) {
   const { site_id } = await params;
-  const API = process.env.APPROVALS_API_URL ?? "http://localhost:3002";
+  const { searchParams } = new URL(req.url);
+  const siteUrl = searchParams.get("site_url") as string | undefined;
+
+  const API = process.env.BACKEND_API_URL ?? "http://localhost:3002";
 
   let open_alerts = 0;
   try {
@@ -43,8 +39,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const traffic_sparkline: Array<{ date: string; clicks: number }> = [];
 
   try {
-    const gAuth = getAuth(site_id);
-    const siteUrl = getSiteUrl(site_id);
+    const gAuth = getAuth();
     const sc = google.searchconsole({ version: "v1", auth: gAuth });
 
     const end = new Date();

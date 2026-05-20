@@ -6,16 +6,16 @@ const TAB = "Cities Config";
 const RANGE_ALL = `'${TAB}'!A:E`;
 
 function getAuth() {
-  const raw = process.env.GSC_OAUTH_SITE_1;
-  if (!raw) throw new Error("Missing GSC_OAUTH_SITE_1");
+  const raw = process.env.GSC_OAUTH_SITE;
+  if (!raw) throw new Error("Missing GSC_OAUTH_SITE");
   return new google.auth.GoogleAuth({
     credentials: JSON.parse(raw) as object,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
 }
 
-function getSpreadsheetId(site_id: number) {
-  const key = `SHEETS_ID_${site_id}`;
+function getSpreadsheetId() {
+  const key = `SHEETS_ID`;
   const id = process.env[key];
   if (!id) throw new Error(`Missing ${key}`);
   return id;
@@ -25,18 +25,16 @@ async function getSheetGid(spreadsheetId: string): Promise<number> {
   const sheets = google.sheets({ version: "v4", auth: getAuth() });
   const { data } = await sheets.spreadsheets.get({ spreadsheetId });
   const sheet = data.sheets?.find((s) => s.properties?.title === TAB);
-  if (!sheet?.properties?.sheetId == null) throw new Error(`Tab "${TAB}" not found`);
+  if (!sheet?.properties?.sheetId == null)
+    throw new Error(`Tab "${TAB}" not found`);
   return sheet!.properties!.sheetId!;
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const params = req.nextUrl.searchParams;
-    const siteId = params.get("siteIds");
-
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
     const { data } = await sheets.spreadsheets.values.get({
-      spreadsheetId: getSpreadsheetId(Number(siteId)),
+      spreadsheetId: getSpreadsheetId(),
       range: RANGE_ALL,
     });
 
@@ -68,17 +66,26 @@ export async function POST(req: NextRequest) {
       target_keyword?: string;
     };
 
-    const { rowIndex, site_id, city = "", state = "", country = "", target_keyword = "" } = body;
+    const {
+      rowIndex,
+      site_id,
+      city = "",
+      state = "",
+      country = "",
+      target_keyword = "",
+    } = body;
 
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
-    const spreadsheetId = getSpreadsheetId(1);
+    const spreadsheetId = getSpreadsheetId();
 
     if (rowIndex) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `'${TAB}'!A${rowIndex}:E${rowIndex}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[Number(site_id), city, state, country, target_keyword]] },
+        requestBody: {
+          values: [[Number(site_id), city, state, country, target_keyword]],
+        },
       });
       return NextResponse.json({ ok: true, updated: rowIndex });
     }
@@ -88,7 +95,9 @@ export async function POST(req: NextRequest) {
       range: RANGE_ALL,
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [[Number(site_id), city, state, country, target_keyword]] },
+      requestBody: {
+        values: [[Number(site_id), city, state, country, target_keyword]],
+      },
     });
     return NextResponse.json({ ok: true, appended: true }, { status: 201 });
   } catch (err) {
@@ -99,32 +108,36 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { rowIndex, site_id } = (await req.json()) as {
+    const { rowIndex } = (await req.json()) as {
       rowIndex: number;
-      site_id: number;
     };
 
     if (!rowIndex) {
-      return NextResponse.json({ error: "rowIndex is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "rowIndex is required" },
+        { status: 400 },
+      );
     }
 
-    const spreadsheetId = getSpreadsheetId(1);
+    const spreadsheetId = getSpreadsheetId();
     const sheetId = await getSheetGid(spreadsheetId);
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
 
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
-        requests: [{
-          deleteDimension: {
-            range: {
-              sheetId,
-              dimension: "ROWS",
-              startIndex: rowIndex - 1, // 0-based
-              endIndex: rowIndex,       // exclusive
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: "ROWS",
+                startIndex: rowIndex - 1, // 0-based
+                endIndex: rowIndex, // exclusive
+              },
             },
           },
-        }],
+        ],
       },
     });
 

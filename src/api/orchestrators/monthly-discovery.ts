@@ -51,7 +51,7 @@ async function writeToContentCalendar(
   opportunities: ContentOpportunity[],
 ) {
   console.log(`  [city] Writing contents to Sheets...`);
-  const sheets = getSheetsClient(siteId);
+  const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
   const timestamp = new Date().toISOString().split("T")[0];
 
@@ -127,9 +127,9 @@ async function runMonthlyDiscovery() {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const startTime = Date.now();
 
-  const sheets = getSheetsClient(1);
+  const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
-  
+
   console.log(`[monthly-discovery] ══════════════════════════════════════════`);
   console.log(`[monthly-discovery] Starting Monthly Discovery...`);
   console.log(`[monthly-discovery] DRY_RUN=${DRY_RUN}`);
@@ -154,7 +154,7 @@ async function runMonthlyDiscovery() {
   const overallSummary: string[] = [];
 
   // 2. Loop Sites and Cities
-  const site = sites[0];
+  // const site = sites[0];
   for (const site of sites) {
     console.log(`\n[site] ${site.domain} (${site.brandName})`);
     let siteKeywordsTotal = 0;
@@ -168,6 +168,7 @@ async function runMonthlyDiscovery() {
         // Call keyword-researcher MCP logic
         const rawKeywords = await discoverCityKeywords(
           site.siteId,
+          site.domain,
           city,
           site.industry,
         );
@@ -198,7 +199,7 @@ async function runMonthlyDiscovery() {
       }
     }
 
-    const siteReport = `${site.brandName}: Discovered ${siteKeywordsTotal} keywords across ${site.cities.length} cities. Created ${siteOpportunitiesTotal} content ideas.`;
+    const siteReport = `${site.brandName}(${site.domain}): Discovered ${siteKeywordsTotal} keywords across ${site.cities.length} cities. Created ${siteOpportunitiesTotal} content ideas.`;
     overallSummary.push(siteReport);
     console.log(
       `[monthly-discovery] All Cities for site_id ${site.siteId} Finished`,
@@ -209,7 +210,7 @@ async function runMonthlyDiscovery() {
   if (!DRY_RUN) {
     console.log("Summary ", overallSummary);
 
-    await postMonthlyDiscoveryToSlack(site.siteId, {
+    await postMonthlyDiscoveryToSlack({
       summary: overallSummary,
     });
   }
